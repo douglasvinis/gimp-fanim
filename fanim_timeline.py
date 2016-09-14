@@ -14,8 +14,8 @@ Timeline
 from gimpfu import gimp,pdb
 import pygtk
 pygtk.require('2.0')
-import gtk
-import numpy
+import gtk, numpy, threading, time
+gtk.threads_init()
 
 WINDOW_TITLE = "GIMP FAnim Timeline [%s]"
 # playback macros
@@ -23,6 +23,7 @@ NEXT = 1
 PREV = 2
 END = 3
 START = 4
+NOWHERE = 5
 
 class Utils:
     @staticmethod
@@ -46,6 +47,23 @@ class Utils:
         img.set_from_stock(stock,size)
         b.set_image(img)
         return b
+
+class PlayThread(threading.Thread):
+    def __init__(self,timeline,play_button):
+        threading.Thread.__init__(self)
+        self.timeline = timeline
+        self.play_button = play_button
+        self.cnt = 0
+
+    def run(self):
+        while  self.timeline.is_playing:
+            time.sleep((1.0/self.timeline.frames_per_second) + self.timeline.frames_time)
+
+            if not self.timeline.is_replay and self.timeline.active >= len(self.timeline.frames)-1:
+                self.timeline.on_toggle_play(self.play_button)
+
+            self.timeline.on_goto(None,NEXT)
+
 
 class AnimFrame(gtk.EventBox):
     def __init__(self,layer,width=100,height=120):
@@ -81,6 +99,10 @@ class AnimFrame(gtk.EventBox):
         self._get_thumb_image()
 
     def _get_thumb_image(self):
+        """
+        convert the pixel info returned by python into a gtk image to be
+        showed.
+        """
         width = 100
         height = 100
         image_data = pdb.gimp_drawable_thumbnail(self.layer,width,height)
@@ -89,11 +111,11 @@ class AnimFrame(gtk.EventBox):
         p2d = [[[0 for z in range(c)] for x in range(w)] for y in range(h)]
 
         # looping through all pixels of the thumbnail and organize it.
-        x = y = z = 0
+        x = y = z = 0  # x and y coordenate and the color z
         for i in range(image_data[3]):
             p2d[y][x][z] = image_data[4][i]
             z += 1
-            if z >= c:
+            if z >= c: #if color reach the max 3 or 4 channesl (rgb and a)
                 z = 0
                 x += 1
                 if x >= w:
@@ -120,12 +142,26 @@ class Timeline(gtk.Window):
         self.is_replay = False
         # modifiable widgets
         self.play_button_images = []
-        self.widgets_to_disable = []
+        self.widgets_to_disable = [] # widgets to disable when playing
         
         # frames
         self.frames = []
         self.selected = []
         self.active = None
+
+        self.frames_per_second = 30
+        self.frames_time = 0.01
+
+        # onionskin variables
+        self.onionskin_enabled = False
+        self.onionskin_depth = 2
+        self.onionskin_backward = True
+        self.onionskin_forward = False
+        self.onionskin_opacity = 50.0
+        self.onionskin_opacity_decay = 20.0
+        self.onionskin_disable_on_play= True
+
+        self.play_thread = None
 
         # create all widgets
         self._setup_widgets()
@@ -176,7 +212,7 @@ class Timeline(gtk.Window):
 
     def _scan_image_layers(self):
         layers = self.image.layers
-        layers.reverse()
+        #layers.reverse()
         for layer in layers:
             f = AnimFrame(layer)
             self.frame_bar.pack_start(f,False,True,2)
@@ -216,10 +252,10 @@ class Timeline(gtk.Window):
         b_play.connect('clicked',self.on_toggle_play)
         b_repeat.connect('toggled',self.on_replay)
 
-        b_next.connect('clicked',self.on_goto,NEXT)
-        b_prev.connect('clicked',self.on_goto,PREV)
-        b_toend.connect('clicked',self.on_goto,END)
-        b_tostart.connect('clicked',self.on_goto,START)
+        b_next.connect('clicked',self.on_goto,NEXT,True)
+        b_prev.connect('clicked',self.on_goto,PREV,True)
+        b_toend.connect('clicked',self.on_goto,END,True)
+        b_tostart.connect('clicked',self.on_goto,START,True)
 
 
         # add to the disable on play list
@@ -281,11 +317,11 @@ class Timeline(gtk.Window):
         # active onionskin
         b_active = Utils.toggle_button_stock(gtk.STOCK_DND_MULTIPLE,stock_size)
 
-        # onionskin config
-        b_conf = Utils.button_stock(gtk.STOCK_PROPERTIES,stock_size)
+        # connect widgets
+        b_active.connect("clicked",self.on_onionskin)
 
         # add to the disable on play list
-        w = [b_active,b_conf]
+        w = [b_active]
         map(lambda x: self.widgets_to_disable.append(x),w)
 
         # packing everything in gbar
@@ -317,28 +353,49 @@ class Timeline(gtk.Window):
 
     def on_toggle_play(self,widget):
         """
-        This method will change the animation play state,
+        This method change the animation play state,
         change the button image and will disable/enable the other buttons
         interation.
         for that they need 2 image which is stored in self.play_button_images
         variable.
         """
+        # if onionskin on play is disable then disable remaining frames
+        if self.onionskin_disable_on_play:
+            self.layers_show(False)
+
         self.is_playing = not self.is_playing
+
         if self.is_playing:
-            widget.set_image(self.play_button_images[1])
+            widget.set_image(self.play_button_images[1]) # set pause image to the button
+
+            # start the thread to make the changes on the frames in background
+            self.play_thread = PlayThread(self,widget)
+            self.play_thread.start()
         else :
             widget.set_image(self.play_button_images[0])
 
-        # loop through all playback bar children to disable interation.
+        # loop through all playback bar children to disable interation
         for w in self.widgets_to_disable:
             w.set_sensitive(not self.is_playing)
 
     def on_replay(self,widget):
         self.is_replay = widget.get_active()
-        print (self.is_replay)
 
-    def on_goto(self,widget,to):
-        self.frames[self.active].highlight(False)
+    def on_onionskin(self,widget):
+        self.layers_show(False) # clear remaining onionskin frames
+        self.onionskin_enabled = widget.get_active()
+        self.on_goto(None,NOWHERE,True)
+
+    def on_goto(self,widget,to,update=False):
+        """
+        This method change the atual active frame to when the variable
+        (to) indicate, the macros are (START, END, NEXT, PREV)
+        - called once per frame when is_playing is enabled.
+        """
+        self.layers_show(False)
+
+        if update:
+            self.frames[self.active].update_layer_info()
 
         if to == START:
             self.active = 0
@@ -358,13 +415,48 @@ class Timeline(gtk.Window):
                 i= len(self.frames)-1
             self.active = i
 
-        for frame in self.frames:
-            frame.layer.visible = False
-        self.frames[self.active].layer.visible = True
-        self.frames[self.active].highlight(True)
+        self.layers_show(True)
         self.image.active_layer = self.frames[self.active].layer
-        gimp.displays_flush()
+        gimp.displays_flush() # update the gipms displays to show de changes.
 
+    def layers_show(self,state):
+        """
+        Util function to hide the old frames and show the next.
+        """
+        opacity = 0
+
+        self.frames[self.active].layer.opacity = 100.0
+
+        if not state:
+            opacity = 100.0
+        else :
+            opacity = self.onionskin_opacity
+
+        self.frames[self.active].layer.visible = state # show or hide the frame
+        self.frames[self.active].highlight(state) # highlight or not the frame
+
+
+        if self.onionskin_enabled and not(self.is_playing and self.onionskin_disable_on_play):
+            # calculating the onionskin backward and forward
+            for i in range(1,self.onionskin_depth +1):
+
+                if self.onionskin_backward:
+                    pos = self.active - i
+                    if pos >= 0:
+                        # calculate onionskin depth opacity decay.
+                        o = opacity - i * self.onionskin_opacity_decay
+                        self.frames[pos].layer.visible = state
+                        self.frames[pos].layer.opacity = o
+
+                if self.onionskin_forward:
+                    pos = self.active +i
+                    self.frames[self.active].layer.opacity = opacity
+
+                    if pos <= len(self.frames)-1:
+                        # calculate onionskin depth opacity decay.
+                        o = opacity - i * self.onionskin_opacity_decay
+                        self.frames[pos].layer.visible = state
+                        self.frames[pos].layer.opacity = o
 
 def timeline_main(image,drawable):
     global WINDOW_TITLE
