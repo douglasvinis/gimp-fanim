@@ -18,6 +18,11 @@ import gtk
 import numpy
 
 WINDOW_TITLE = "GIMP FAnim Timeline [%s]"
+# playback macros
+NEXT = 1
+PREV = 2
+END = 3
+START = 4
 
 class Utils:
     @staticmethod
@@ -52,6 +57,12 @@ class AnimFrame(gtk.EventBox):
         self.layer = layer
 
         self._setup()
+
+    def highlight(self,state):
+        if state:
+            self.set_state(gtk.STATE_SELECTED)
+        else :
+            self.set_state(gtk.STATE_NORMAL)
 
     def _setup(self):
         self.thumbnail = gtk.Image()
@@ -111,6 +122,12 @@ class Timeline(gtk.Window):
         self.play_button_images = []
         self.widgets_to_disable = []
         
+        # frames
+        self.frames = []
+        self.selected = []
+        self.active = None
+
+        # create all widgets
         self._setup_widgets()
 
     def destroy(self,widget):
@@ -163,6 +180,11 @@ class Timeline(gtk.Window):
         for layer in layers:
             f = AnimFrame(layer)
             self.frame_bar.pack_start(f,False,True,2)
+            self.frames.append(f)
+
+        if len(self.frames) > 0:
+            self.active = 0
+            self.on_goto(None,START)
 
     def _setup_playbackbar(self):
         playback_bar = gtk.HBox()
@@ -193,6 +215,12 @@ class Timeline(gtk.Window):
         # connecting the button with callback
         b_play.connect('clicked',self.on_toggle_play)
         b_repeat.connect('toggled',self.on_replay)
+
+        b_next.connect('clicked',self.on_goto,NEXT)
+        b_prev.connect('clicked',self.on_goto,PREV)
+        b_toend.connect('clicked',self.on_goto,END)
+        b_tostart.connect('clicked',self.on_goto,START)
+
 
         # add to the disable on play list
         w = [b_repeat,b_prev,b_next,b_tostart,b_toend]
@@ -308,6 +336,35 @@ class Timeline(gtk.Window):
     def on_replay(self,widget):
         self.is_replay = widget.get_active()
         print (self.is_replay)
+
+    def on_goto(self,widget,to):
+        self.frames[self.active].highlight(False)
+
+        if to == START:
+            self.active = 0
+
+        elif to == END:
+            self.active = len(self.frames)-1
+
+        elif to == NEXT:
+            i = self.active + 1
+            if i > len(self.frames)-1:
+                i = 0
+            self.active = i
+
+        elif to == PREV:
+            i = self.active - 1
+            if i < 0:
+                i= len(self.frames)-1
+            self.active = i
+
+        for frame in self.frames:
+            frame.layer.visible = False
+        self.frames[self.active].layer.visible = True
+        self.frames[self.active].highlight(True)
+        self.image.active_layer = self.frames[self.active].layer
+        gimp.displays_flush()
+
 
 def timeline_main(image,drawable):
     global WINDOW_TITLE
