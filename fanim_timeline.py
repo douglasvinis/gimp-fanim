@@ -25,6 +25,14 @@ END = 3
 START = 4
 NOWHERE = 5
 
+# settings variable macros
+FRAMERATE = "framerate"
+FRAME_TIME = "frame_time"
+OSKIN_DEPTH = "oskin_depth"
+OSKIN_ONPLAY = "oskin_onplay"
+OSKIN_FORWARD = "oskin_forward"
+OSKIN_BACKWARD = "oskin_backward"
+
 class Utils:
     @staticmethod
     def button_stock(stock,size):
@@ -48,6 +56,108 @@ class Utils:
         b.set_image(img)
         return b
 
+    @staticmethod
+    def spin_button(name="variable",number_type="int",value=0,min=1,max=100,advance=1):
+        adjustment = gtk.Adjustment(value,min,max,advance,advance)
+        digits = 0
+        if number_type != "int":
+            digits = 3
+        l = gtk.Label(name)
+        b = gtk.SpinButton(adjustment,0,digits)
+
+        h = gtk.HBox()
+        h.pack_start(l)
+        h.pack_start(b)
+        return h,adjustment
+
+
+class ConfDialog(gtk.Dialog):
+    def __init__(self,title="Config",parent=None,config = None):
+        gtk.Dialog.__init__(self,title,parent, gtk.DIALOG_DESTROY_WITH_PARENT,
+                ('Apply',gtk.RESPONSE_APPLY,'Cancel',gtk.RESPONSE_CANCEL))
+
+        self.last_config= config # settings 
+        self.atual_config = config
+
+        # setup all widgets
+        self._setup_widgets()
+
+    def update_config(self,widget,var_type=None):
+        if isinstance(widget,gtk.Adjustment):
+            value = widget.get_value()
+        elif isinstance(widget,gtk.CheckButton):
+            value = widget.get_active()
+        self.atual_config[var_type] = value
+
+    def _setup_widgets(self):
+
+        h_space = 4 # horizontal space
+
+        # create the frames to contein the diferent settings.
+        f_time = gtk.Frame(label="Time")
+        f_oskin = gtk.Frame(label="Onion Skin")
+        self.set_size_request(400,-1)
+        self.vbox.pack_start(f_time,True,True,h_space)
+        self.vbox.pack_start(f_oskin,True,True,h_space)
+
+        # create the time settings.
+        th = gtk.HBox()
+        fps,fps_spin = Utils.spin_button("Fps",'int',self.last_config[FRAMERATE],1,100) #conf fps
+        ftime,ftime_spin = Utils.spin_button("Frame Time",'float',self.last_config[FRAME_TIME],0.001,5,0.1)
+
+        th.pack_start(fps,True,True,h_space)
+        th.pack_start(ftime,True,True,h_space)
+
+        f_time.add(th)
+        # create onion skin settings
+        ov = gtk.VBox()
+        f_oskin.add(ov)
+        
+        # fist line
+        oh1 = gtk.HBox()
+        depth,depth_spin = Utils.spin_button("Depth",'int',self.last_config[OSKIN_DEPTH],1,4,1) #conf depth
+
+        on_play = gtk.CheckButton("On Play")
+        on_play.set_active(self.last_config[OSKIN_ONPLAY])
+
+        oh1.pack_start(depth,True,True,h_space)
+        oh1.pack_start(on_play,True,True,h_space)
+        ov.pack_start(oh1)
+        # second line
+        oh2 = gtk.HBox()
+        forward = gtk.CheckButton("Forward")
+        forward.set_active(self.last_config[OSKIN_FORWARD])
+
+        backward = gtk.CheckButton("Backward")
+        backward.set_active(self.last_config[OSKIN_BACKWARD])
+
+        oh2.pack_start(forward,True,True,h_space)
+        oh2.pack_start(backward,True,True,h_space)
+
+        ov.pack_start(oh2)
+        # last line
+
+        # connect a callback to all
+        
+        fps_spin.connect("value_changed",self.update_config,FRAMERATE)
+        ftime_spin.connect("value_changed",self.update_config,FRAME_TIME)
+        depth_spin.connect("value_changed",self.update_config,OSKIN_DEPTH)
+        on_play.connect("toggled",self.update_config,OSKIN_ONPLAY)
+        forward.connect("toggled",self.update_config,OSKIN_FORWARD)
+        backward.connect("toggled",self.update_config,OSKIN_BACKWARD)
+
+        # show all
+        self.show_all()
+
+    def run(self):
+        result = super(ConfDialog,self).run()
+        conf = self.last_config
+
+        if result == gtk.RESPONSE_APPLY:
+            conf = self.atual_config
+
+        return result, conf
+
 class PlayThread(threading.Thread):
     def __init__(self,timeline,play_button):
         threading.Thread.__init__(self)
@@ -57,7 +167,7 @@ class PlayThread(threading.Thread):
 
     def run(self):
         while  self.timeline.is_playing:
-            time.sleep((1.0/self.timeline.frames_per_second) + self.timeline.frames_time)
+            time.sleep((1.0/self.timeline.framerate) + self.timeline.frame_time)
 
             if not self.timeline.is_replay and self.timeline.active >= len(self.timeline.frames)-1:
                 self.timeline.on_toggle_play(self.play_button)
@@ -149,17 +259,17 @@ class Timeline(gtk.Window):
         self.selected = []
         self.active = None
 
-        self.frames_per_second = 30
-        self.frames_time = 0.01
+        self.framerate = 30
+        self.frame_time = 0.01
 
         # onionskin variables
-        self.onionskin_enabled = False
-        self.onionskin_depth = 2
-        self.onionskin_backward = True
-        self.onionskin_forward = False
-        self.onionskin_opacity = 50.0
-        self.onionskin_opacity_decay = 20.0
-        self.onionskin_disable_on_play= True
+        self.oskin = False
+        self.oskin_depth = 2
+        self.oskin_backward = True
+        self.oskin_forward = False
+        self.oskin_opacity = 50.0
+        self.oskin_opacity_decay = 20.0
+        self.oskin_onplay= True
 
         self.play_thread = None
 
@@ -188,8 +298,8 @@ class Timeline(gtk.Window):
         cbar = gtk.HBox()
         cbar.pack_start(self._setup_playbackbar(),False,False,10)
         cbar.pack_start(self._setup_editbar(),False,False,10)
-        cbar.pack_start(self._setup_timebar(),False,False,10)
         cbar.pack_start(self._setup_onionskin(),False,False,10)
+        cbar.pack_start(self._setup_config(),False,False,10)
         cbar.pack_start(self._setup_generalbar(),False,False,10)
 
         # frames bar widgets
@@ -298,16 +408,18 @@ class Timeline(gtk.Window):
 
         return edit_bar
 
-    def _setup_timebar(self):
+    def _setup_config(self):
         stock_size = gtk.ICON_SIZE_BUTTON
-        time_bar = gtk.HBox()
+        config_bar = gtk.HBox()
 
-        b_time = Utils.button_stock(gtk.STOCK_PROPERTIES,stock_size)
+        b_conf = Utils.button_stock(gtk.STOCK_PREFERENCES,stock_size)
 
-        self.widgets_to_disable.append(b_time)
+        self.widgets_to_disable.append(b_conf)
+        # connect
+        b_conf.connect("clicked",self.on_config)
 
-        time_bar.pack_start(b_time,False,False,0)
-        return time_bar
+        config_bar.pack_start(b_conf,False,False,0)
+        return config_bar
 
     def _setup_onionskin(self):
         stock_size = gtk.ICON_SIZE_BUTTON
@@ -348,6 +460,24 @@ class Timeline(gtk.Window):
         map(lambda x: general_bar.pack_start(x,False,False,0),w)
 
         return general_bar
+    def get_settings(self):
+        s = {}
+        s[FRAMERATE] = self.framerate
+        s[FRAME_TIME] = self.frame_time
+        s[OSKIN_DEPTH] = self.oskin_depth
+        s[OSKIN_FORWARD] = self.oskin_forward
+        s[OSKIN_BACKWARD] = self.oskin_backward
+        s[OSKIN_ONPLAY] = self.oskin_onplay
+        return s
+
+    def set_settings(self,conf):
+
+        self.framerate = int(conf[FRAMERATE])
+        self.frame_time = conf[FRAME_TIME]
+        self.oskin_depth = int(conf[OSKIN_DEPTH])
+        self.oskin_forward = conf[OSKIN_FORWARD]
+        self.oskin_backward = conf[OSKIN_BACKWARD]
+        self.oskin_onplay = conf[OSKIN_ONPLAY]
 
 #----------------------Callback Functions----------------#
 
@@ -360,7 +490,7 @@ class Timeline(gtk.Window):
         variable.
         """
         # if onionskin on play is disable then disable remaining frames
-        if self.onionskin_disable_on_play:
+        if self.oskin_onplay:
             self.layers_show(False)
 
         self.is_playing = not self.is_playing
@@ -383,8 +513,17 @@ class Timeline(gtk.Window):
 
     def on_onionskin(self,widget):
         self.layers_show(False) # clear remaining onionskin frames
-        self.onionskin_enabled = widget.get_active()
+        self.oskin = widget.get_active()
         self.on_goto(None,NOWHERE,True)
+
+    def on_config(self,widget):
+        dialog = ConfDialog("FAnim Config",self,self.get_settings())
+        result, config = dialog.run()
+
+        print config
+        if result == gtk.RESPONSE_APPLY:
+            self.set_settings(config)
+        dialog.destroy()
 
     def on_goto(self,widget,to,update=False):
         """
@@ -430,31 +569,30 @@ class Timeline(gtk.Window):
         if not state:
             opacity = 100.0
         else :
-            opacity = self.onionskin_opacity
+            opacity = self.oskin_opacity
 
         self.frames[self.active].layer.visible = state # show or hide the frame
         self.frames[self.active].highlight(state) # highlight or not the frame
 
-
-        if self.onionskin_enabled and not(self.is_playing and self.onionskin_disable_on_play):
+        if self.oskin and not(self.is_playing and not self.oskin_onplay):
             # calculating the onionskin backward and forward
-            for i in range(1,self.onionskin_depth +1):
+            for i in range(1,self.oskin_depth +1):
 
-                if self.onionskin_backward:
+                if self.oskin_backward:
                     pos = self.active - i
                     if pos >= 0:
                         # calculate onionskin depth opacity decay.
-                        o = opacity - i * self.onionskin_opacity_decay
+                        o = opacity - i * self.oskin_opacity_decay
                         self.frames[pos].layer.visible = state
                         self.frames[pos].layer.opacity = o
 
-                if self.onionskin_forward:
+                if self.oskin_forward:
                     pos = self.active +i
                     self.frames[self.active].layer.opacity = opacity
 
                     if pos <= len(self.frames)-1:
                         # calculate onionskin depth opacity decay.
-                        o = opacity - i * self.onionskin_opacity_decay
+                        o = opacity - i * self.oskin_opacity_decay
                         self.frames[pos].layer.visible = state
                         self.frames[pos].layer.opacity = o
 
