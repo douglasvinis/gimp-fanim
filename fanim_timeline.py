@@ -33,6 +33,10 @@ OSKIN_ONPLAY = "oskin_onplay"
 OSKIN_FORWARD = "oskin_forward"
 OSKIN_BACKWARD = "oskin_backward"
 
+# state to disable the buttons
+PLAYING = 1
+NO_FRAMES = 2
+
 class Utils:
     @staticmethod
     def button_stock(stock,size):
@@ -253,6 +257,7 @@ class Timeline(gtk.Window):
         # modifiable widgets
         self.play_button_images = []
         self.widgets_to_disable = [] # widgets to disable when playing
+        self.play_bar = None
         
         # frames
         self.frames = []
@@ -371,6 +376,7 @@ class Timeline(gtk.Window):
         # add to the disable on play list
         w = [b_repeat,b_prev,b_next,b_tostart,b_toend]
         map(lambda x: self.widgets_to_disable.append(x),w)
+        self.play_bar = playback_bar
 
         # set the tooltips
         b_play.set_tooltip_text("Animation play/pause")
@@ -402,6 +408,10 @@ class Timeline(gtk.Window):
         # add to the disable on play list
         w = [b_back,b_forward,b_rem,b_add]
         map(lambda x: self.widgets_to_disable.append(x),w)
+
+        # connect callbacks:
+        b_rem.connect("clicked",self.on_remove) # remove frame
+        b_add.connect("clicked",self.on_add) # add frame
 
         # packing everything in gbar
         map(lambda x: edit_bar.pack_start(x,False,False,0),w)
@@ -479,6 +489,14 @@ class Timeline(gtk.Window):
         self.oskin_backward = conf[OSKIN_BACKWARD]
         self.oskin_onplay = conf[OSKIN_ONPLAY]
 
+    def _toggle_enable_buttons(self,state):
+        if state == PLAYING:
+            for w in self.widgets_to_disable:
+                w.set_sensitive(not self.is_playing)
+        elif state == NO_FRAMES:
+            self.play_bar.set_sensitive(not self.play_bar.get_sensitive())
+
+
 #----------------------Callback Functions----------------#
 
     def on_toggle_play(self,widget):
@@ -505,8 +523,9 @@ class Timeline(gtk.Window):
             widget.set_image(self.play_button_images[0])
 
         # loop through all playback bar children to disable interation
-        for w in self.widgets_to_disable:
-            w.set_sensitive(not self.is_playing)
+       # for w in self.widgets_to_disable:
+       #     w.set_sensitive(not self.is_playing)
+        self._toggle_enable_buttons(PLAYING)
 
     def on_replay(self,widget):
         self.is_replay = widget.get_active()
@@ -517,6 +536,9 @@ class Timeline(gtk.Window):
         self.on_goto(None,NOWHERE,True)
 
     def on_config(self,widget):
+        """
+        Open a dialog to set all the settings of the plugin.
+        """
         dialog = ConfDialog("FAnim Config",self,self.get_settings())
         result, config = dialog.run()
 
@@ -524,6 +546,24 @@ class Timeline(gtk.Window):
         if result == gtk.RESPONSE_APPLY:
             self.set_settings(config)
         dialog.destroy()
+
+    def on_remove(self,widget):
+        """
+        Remove the atual selected frame, and his layer. and if the case his sublayers.
+        """
+        self.image.remove_layer(self.frames[self.active].layer)
+        self.frame_bar.remove (self.frames[self.active])
+        self.frames[self.active].destroy()
+        self.frames.remove(self.frames[self.active])
+
+        if len(self.frames) <1:
+            self._toggle_enable_buttons(NO_FRAMES)
+
+    def on_add(self,widget):
+        if len(self.frames) < 1:
+            self._toggle_enable_buttons(NO_FRAMES)
+        pass
+
 
     def on_goto(self,widget,to,update=False):
         """
