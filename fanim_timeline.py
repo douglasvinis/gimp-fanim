@@ -11,7 +11,7 @@ FAnim
 Timeline
 
 """
-from gimpfu import gimp,pdb
+from gimpfu import *
 import pygtk
 pygtk.require('2.0')
 import gtk, numpy, threading, time
@@ -267,6 +267,9 @@ class Timeline(gtk.Window):
         self.framerate = 30
         self.frame_time = 0.01
 
+        # new frame.
+        self.new_layer_type = TRANSPARENT_FILL
+
         # onionskin variables
         self.oskin = False
         self.oskin_depth = 2
@@ -321,21 +324,35 @@ class Timeline(gtk.Window):
         
         # catch all layers
         self._scan_image_layers()
+        self.active = 0
+        self.on_goto(None,START)
 
         # finalize showing all widgets
         self.show_all()
 
     def _scan_image_layers(self):
+        """
+        If exists frames this function clears all, after that the image layers
+        is scanned and the frames are recreated.
+        """
         layers = self.image.layers
+
+        if self.frames:
+            for frame in self.frames:
+                self.frame_bar.remove(frame)
+                frame.destroy()
+            self.frames = []
+
         #layers.reverse()
         for layer in layers:
             f = AnimFrame(layer)
             self.frame_bar.pack_start(f,False,True,2)
             self.frames.append(f)
+            f.show_all()
 
-        if len(self.frames) > 0:
-            self.active = 0
-            self.on_goto(None,START)
+        #if len(self.frames) > 0:
+        #    self.active = 0
+        #    self.on_goto(None,START)
 
     def _setup_playbackbar(self):
         playback_bar = gtk.HBox()
@@ -412,6 +429,8 @@ class Timeline(gtk.Window):
         # connect callbacks:
         b_rem.connect("clicked",self.on_remove) # remove frame
         b_add.connect("clicked",self.on_add) # add frame
+        b_back.connect("clicked",self.on_move,PREV)
+        b_forward.connect("clicked",self.on_move,NEXT)
 
         # packing everything in gbar
         map(lambda x: edit_bar.pack_start(x,False,False,0),w)
@@ -542,28 +561,82 @@ class Timeline(gtk.Window):
         dialog = ConfDialog("FAnim Config",self,self.get_settings())
         result, config = dialog.run()
 
-        print config
         if result == gtk.RESPONSE_APPLY:
             self.set_settings(config)
         dialog.destroy()
+
+    def on_move(self,widget,direction):
+        """
+        Move the layer and the frame forward or backward.
+        """
+        # calculate next position
+        index = 0
+        if direction == NEXT:
+            index = self.active+1
+            if index == len(self.frames):
+                return
+
+        elif direction == PREV:
+            index = self.active-1
+            if self.active-1 < 0:
+                return
+        # move layer.
+        if direction == PREV:
+            self.image.raise_layer(self.frames[self.active].layer)
+        elif direction == NEXT:
+            self.image.lower_layer(self.frames[self.active].layer)
+
+        # update Timeline
+        self._scan_image_layers()
+        self.active = index
+        self.on_goto(None,NOWHERE)
 
     def on_remove(self,widget):
         """
         Remove the atual selected frame, and his layer. and if the case his sublayers.
         """
-        self.image.remove_layer(self.frames[self.active].layer)
-        self.frame_bar.remove (self.frames[self.active])
-        self.frames[self.active].destroy()
-        self.frames.remove(self.frames[self.active])
+        if not self.frames:
+            return 
 
-        if len(self.frames) <1:
+        if self.active > 0:
+            self.on_goto(None,PREV,True)
+
+        index = self.active + 1
+        if self.active == 0:
+            index = self.active
+
+        self.image.remove_layer(self.frames[index].layer)
+        self.frame_bar.remove (self.frames[index])
+        self.frames[index].destroy()
+        self.frames.remove(self.frames[index])
+
+        if len(self.frames) == 0:
             self._toggle_enable_buttons(NO_FRAMES)
+        else :
+            self.on_goto(None,None,True)
+
 
     def on_add(self,widget):
-        if len(self.frames) < 1:
-            self._toggle_enable_buttons(NO_FRAMES)
-        pass
+        """
+        Add new layer to the image and a new frame to the Timeline.
+        """
 
+        name = "Frame " + str(len(self.frames))
+        # create the layer to add
+        l = gimp.Layer(self.image,name, self.image.width,self.image.height,RGBA_IMAGE,100,NORMAL_MODE)
+
+        # adding layer
+        self.image.add_layer(l,self.active+1)
+        if self.new_layer_type == TRANSPARENT_FILL:
+            pdb.gimp_edit_clear(l)
+        #elif self.new_layer_type == BACKGROUND_FILL:
+            #pass
+
+        self._scan_image_layers()
+        self.on_goto(None,NEXT,True)
+
+        if len(self.frames) == 1 :
+            self._toggle_enable_buttons(NO_FRAMES)
 
     def on_goto(self,widget,to,update=False):
         """
