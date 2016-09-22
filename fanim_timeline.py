@@ -14,8 +14,7 @@ Timeline
 from gimpfu import *
 import pygtk
 pygtk.require('2.0')
-import gtk, numpy, threading, time
-gtk.threads_init()
+import gtk, numpy, time
 
 WINDOW_TITLE = "GIMP FAnim Timeline [%s]"
 # playback macros
@@ -162,14 +161,18 @@ class ConfDialog(gtk.Dialog):
 
         return result, conf
 
-class PlayThread(threading.Thread):
+class Player():
     def __init__(self,timeline,play_button):
-        threading.Thread.__init__(self)
+        """
+        this class will implement a loop to play through time the frames, after
+        play each frame, a gtk event handler is called to not freaze the UI.
+        """
+
         self.timeline = timeline
         self.play_button = play_button
         self.cnt = 0
 
-    def run(self):
+    def start(self):
         while  self.timeline.is_playing:
             time.sleep((1.0/self.timeline.framerate) + self.timeline.frame_time)
 
@@ -177,6 +180,10 @@ class PlayThread(threading.Thread):
                 self.timeline.on_toggle_play(self.play_button)
 
             self.timeline.on_goto(None,NEXT)
+
+            # call gtk event handler.
+            while gtk.events_pending():
+                gtk.main_iteration()
 
 
 class AnimFrame(gtk.EventBox):
@@ -536,15 +543,143 @@ class Timeline(gtk.Window):
             widget.set_image(self.play_button_images[1]) # set pause image to the button
 
             # start the thread to make the changes on the frames in background
-            self.play_thread = PlayThread(self,widget)
+            if not self.play_thread:
+                self.play_thread = Player(self,widget)
+            # block every other button than pause.
+            self._toggle_enable_buttons(PLAYING)
+
+            # start the loop to play the frames.
             self.play_thread.start()
+
         else :
             widget.set_image(self.play_button_images[0])
+            self._toggle_enable_buttons(PLAYING)
+            self.on_goto(None,NOWHERE) # update atual frame.
 
-        # loop through all playback bar children to disable interation
-       # for w in self.widgets_to_disable:
-       #     w.set_sensitive(not self.is_playing)
-        self._toggle_enable_buttons(PLAYING)
+    def on_replay(self,widget):
+        self.is_replay = widget.get_active()
+
+    def on_onionskin(self,widget):
+        self.layers_show(False) # clear remaining onionskin frames
+        self.oskin = widget.get_active()
+        self.on_goto(None,NOWHERE,True)
+
+    def on_config(self,widget):
+        """
+        Open a dialog to set all the settings of the plugin.
+        """
+        dialog = ConfDialog("FAnim Config",self,self.get_settings())
+        result, config = dialog.run()
+
+        if result == gtk.RESPONSE_APPLY:
+            self.set_settings(config)
+        dialog.destroy()
+
+    def on_move(self,widget,direction):
+        """
+        Move the layer and the frame forward or backward.
+        """
+        # calculate next position
+        index = 0
+        if direction == NEXT:
+            index = self.active+1
+            if index == len(self.frames):
+                return
+
+        elif direction == PREV:
+            index = self.active-1
+            if self.active-1 < 0:
+                return
+        # move layer.
+        if direction == PREV:
+            self.image.raise_layer(self.frames[self.active].layer)
+        elif direction == NEXT:
+            self.image.lower_layer(self.frames[self.active].layer)
+
+        # update Timeline
+        self._scan_image_layers()
+        self.active = index
+        self.on_goto(None,NOWHERE)
+
+    def on_remove(self,widget):
+        """
+        Remove the atual selected frame, and his layer. and if the case his sublayers.
+        """
+        if not self.frames:
+            return 
+
+        if self.active > 0:
+            self.on_goto(None,PREV,True)
+
+        index = self.active + 1
+        if self.active == 0:
+            index = self.active
+
+        self.image.remove_layer(self.frames[index].layer)
+        self.frame_bar.remove (self.frames[index])
+        self.frames[index].destroy()
+        self.frames.remove(self.frames[index])
+
+        if len(self.frames) == 0:
+            self._toggle_enable_buttons(NO_FRAMES)
+        else :
+            self.on_goto(None,None,True)
+
+
+    def on_add(self,widget):
+        """
+        Add new layer to the image and a new frame to the Timeline.
+        """
+
+        name = "Frame " + str(len(self.frames))
+        # create the layer to add
+        l = gimp.Layer(self.image,name, self.image.width,self.image.height,RGBA_IMAGE,100,NORMAL_MODE)
+
+        # adding layer
+        self.image.add_layer(l,self.active+1)
+        if self.new_layer_type == TRANSPARENT_FILL:
+            pdb.gimp_edit_clear(l)
+        #elif self.new_layer_type == BACKGROUND_FILL:
+            #pass
+
+        self._scan_image_layers()
+        self.on_goto(None,NEXT,True)
+
+        if len(self.frames) == 1 :
+            self._toggle_enable_buttons(NO_FRAMES)
+
+    def on_goto(self,widget,to,update=False):
+        """
+        This method change the atual active frame to when the variable
+        (to) indicate, the macros are (START, END, NEXT, PREV)
+        - called once per frame when is_playing is enabled.
+        """
+        self.layers_show(False)
+
+        if update:
+            self.frames[self.active].update_layer_info()
+
+        if to == START:
+            self.active = 0
+
+        elif to == END:
+            self.active = len(self.frames)-1
+
+        elif to == NEXT:
+            i = self.active + 1
+            if i > len(self.frames)-1:
+                i = 0
+            self.active = i
+
+        elif to == PREV:
+            i = self.active - 1
+            if i < 0:
+                i= len(self.frames)-1
+            self.active = i
+
+        self.layers_show(True)
+        self.image.active_layer = self.frames[self.active].layer
+        gimp.displays_flush() # 
 
     def on_replay(self,widget):
         self.is_replay = widget.get_active()
