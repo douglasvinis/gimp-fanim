@@ -14,7 +14,7 @@ Timeline
 from gimpfu import *
 import pygtk
 pygtk.require('2.0')
-import gtk, array, time
+import gtk, array, time, os
 
 WINDOW_TITLE = "GIMP FAnim Timeline [%s]"
 # playback macros
@@ -313,8 +313,13 @@ class Timeline(gtk.Window):
         self.set_keep_above(True)
 
         # parse gimp theme gtkrc
-        gtkrcpath  = self._get_theme_gtkrc(gimp.personal_rc_file('themerc'))
-        gtk.rc_parse(gtkrcpath)
+        gtkrc_path  = self._get_theme_gtkrc(gimp.personal_rc_file('themerc'))
+
+        if  os.name != 'nt':# try apply the theme by parse a gtkrc file if is not a windows system.
+            gtk.rc_parse(gtkrc_path)
+        else: # if error occur them parse the file in another way.
+            gtk.rc_add_default_file(gtkrc_path)
+            gtk.rc_reparse_all()
 
         # start creating basic layout
         base = gtk.VBox()
