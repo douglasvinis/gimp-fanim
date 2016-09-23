@@ -292,10 +292,25 @@ class Timeline(gtk.Window):
         self._setup_widgets()
 
     def destroy(self,widget):
+        # if is closing and still playing turn off.
+        if self.is_playing:
+            #self.on_toggle_play(None)
+            self.is_playing = False
+            self.on_goto(None,START)
+
         gtk.main_quit()
 
     def start(self):
         gtk.main()
+
+    def _get_theme_gtkrc(self,themerc):
+        rcpath = ""
+        with  open(themerc,'r') as trc:
+            for l in trc.readlines():
+                if l[:7] == "include":
+                    rcpath = l[9:-2]
+                    break
+        return rcpath
 
     def _setup_widgets(self):
         """
@@ -305,6 +320,10 @@ class Timeline(gtk.Window):
         self.connect("destroy",self.destroy)
         self.set_default_size(400,140)
         self.set_keep_above(True)
+
+        # parse gimp theme gtkrc
+        gtkrcpath  = self._get_theme_gtkrc(gimp.personal_rc_file('themerc'))
+        gtk.rc_parse(gtkrcpath)
 
         # start creating basic layout
         base = gtk.VBox()
