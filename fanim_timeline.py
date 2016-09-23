@@ -14,7 +14,7 @@ Timeline
 from gimpfu import *
 import pygtk
 pygtk.require('2.0')
-import gtk, numpy, time
+import gtk, array, time
 
 WINDOW_TITLE = "GIMP FAnim Timeline [%s]"
 # playback macros
@@ -78,6 +78,9 @@ class ConfDialog(gtk.Dialog):
     def __init__(self,title="Config",parent=None,config = None):
         gtk.Dialog.__init__(self,title,parent, gtk.DIALOG_DESTROY_WITH_PARENT,
                 ('Apply',gtk.RESPONSE_APPLY,'Cancel',gtk.RESPONSE_CANCEL))
+
+        self.set_keep_above(True)
+        self.set_position(gtk.WIN_POS_CENTER)
 
         self.last_config= config # settings 
         self.atual_config = config
@@ -227,29 +230,17 @@ class AnimFrame(gtk.EventBox):
         width = 100
         height = 100
         image_data = pdb.gimp_drawable_thumbnail(self.layer,width,height)
-        w,h,c = image_data[0],image_data[1],image_data[2]
-        # create a 2d array to store the organized data.
-        p2d = [[[0 for z in range(c)] for x in range(w)] for y in range(h)]
 
-        # looping through all pixels of the thumbnail and organize it.
-        x = y = z = 0  # x and y coordenate and the color z
-        for i in range(image_data[3]):
-            p2d[y][x][z] = image_data[4][i]
-            z += 1
-            if z >= c: #if color reach the max 3 or 4 channesl (rgb and a)
-                z = 0
-                x += 1
-                if x >= w:
-                    x = 0
-                    y += 1
-        ##
-        image_array = numpy.array(p2d,dtype=numpy.uint8)
-        pixbuf = gtk.gdk.pixbuf_new_from_array(image_array,gtk.gdk.COLORSPACE_RGB,8)
+        w,h,c,data = image_data[0],image_data[1],image_data[2],image_data[4]
+
+        # create a array of unsigned 8bit data.
+        image_array = array.array('B',data)
+
+        pixbuf = gtk.gdk.pixbuf_new_from_data(image_array,gtk.gdk.COLORSPACE_RGB,c>3,8,w,h,w*c)
         self.thumbnail.set_from_pixbuf(pixbuf)
 
     def update_layer_info(self):
         self._get_thumb_image()
-
 
 class Timeline(gtk.Window):
     def __init__(self,title,image):
@@ -296,7 +287,7 @@ class Timeline(gtk.Window):
         if self.is_playing:
             #self.on_toggle_play(None)
             self.is_playing = False
-            self.on_goto(None,START)
+        self.on_goto(None,START)
 
         gtk.main_quit()
 
