@@ -23,6 +23,7 @@ PREV = 2
 END = 3
 START = 4
 NOWHERE = 5
+POS = 6
 
 # settings variable macros
 FRAMERATE = "framerate"
@@ -368,6 +369,7 @@ class Timeline(gtk.Window):
         #layers.reverse()
         for layer in layers:
             f = AnimFrame(layer)
+            f.connect("button_press_event",self.on_click_goto)
             self.frame_bar.pack_start(f,False,True,2)
             self.frames.append(f)
             f.show_all()
@@ -443,14 +445,16 @@ class Timeline(gtk.Window):
         b_forward = Utils.button_stock(gtk.STOCK_GO_FORWARD,stock_size)
         b_rem = Utils.button_stock(gtk.STOCK_REMOVE,stock_size)
         b_add = Utils.button_stock(gtk.STOCK_ADD,stock_size)
+        b_copy = Utils.button_stock(gtk.STOCK_COPY,stock_size)
 
         # add to the disable on play list
-        w = [b_back,b_forward,b_rem,b_add]
+        w = [b_back,b_forward,b_rem,b_add,b_copy]
         map(lambda x: self.widgets_to_disable.append(x),w)
 
         # connect callbacks:
         b_rem.connect("clicked",self.on_remove) # remove frame
         b_add.connect("clicked",self.on_add) # add frame
+        b_copy.connect("clicked",self.on_add,True) # add frame
         b_back.connect("clicked",self.on_move,PREV)
         b_forward.connect("clicked",self.on_move,NEXT)
 
@@ -640,22 +644,26 @@ class Timeline(gtk.Window):
         else :
             self.on_goto(None,None,True)
 
-
-    def on_add(self,widget):
+    def on_add(self,widget,copy=False):
         """
         Add new layer to the image and a new frame to the Timeline.
+        if copy is true them the current layer will be copy.
         """
 
         name = "Frame " + str(len(self.frames))
         # create the layer to add
-        l = gimp.Layer(self.image,name, self.image.width,self.image.height,RGBA_IMAGE,100,NORMAL_MODE)
+        l = None
+        if not copy:
+            l = gimp.Layer(self.image,name, self.image.width,self.image.height,RGBA_IMAGE,100,NORMAL_MODE)
+
+        else: # copy current layer to add
+            l = self.frames[self.active].layer.copy()
+            l.name = name
 
         # adding layer
         self.image.add_layer(l,self.active+1)
-        if self.new_layer_type == TRANSPARENT_FILL:
+        if self.new_layer_type == TRANSPARENT_FILL and not copy:
             pdb.gimp_edit_clear(l)
-        #elif self.new_layer_type == BACKGROUND_FILL:
-            #pass
 
         self._scan_image_layers()
         self.on_goto(None,NEXT,True)
@@ -663,7 +671,11 @@ class Timeline(gtk.Window):
         if len(self.frames) == 1 :
             self._toggle_enable_buttons(NO_FRAMES)
 
-    def on_goto(self,widget,to,update=False):
+    def on_click_goto(self,widget,event):
+        i = self.frames.index(widget)
+        self.on_goto(None,POS,index=i)
+
+    def on_goto(self,widget,to,update=False,index=0):
         """
         This method change the atual active frame to when the variable
         (to) indicate, the macros are (START, END, NEXT, PREV)
@@ -691,135 +703,12 @@ class Timeline(gtk.Window):
             if i < 0:
                 i= len(self.frames)-1
             self.active = i
+        elif to == POS:
+            self.active = index
 
         self.layers_show(True)
         self.image.active_layer = self.frames[self.active].layer
         gimp.displays_flush() # 
-
-    def on_replay(self,widget):
-        self.is_replay = widget.get_active()
-
-    def on_onionskin(self,widget):
-        self.layers_show(False) # clear remaining onionskin frames
-        self.oskin = widget.get_active()
-        self.on_goto(None,NOWHERE,True)
-
-    def on_config(self,widget):
-        """
-        Open a dialog to set all the settings of the plugin.
-        """
-        dialog = ConfDialog("FAnim Config",self,self.get_settings())
-        result, config = dialog.run()
-
-        if result == gtk.RESPONSE_APPLY:
-            self.set_settings(config)
-        dialog.destroy()
-
-    def on_move(self,widget,direction):
-        """
-        Move the layer and the frame forward or backward.
-        """
-        # calculate next position
-        index = 0
-        if direction == NEXT:
-            index = self.active+1
-            if index == len(self.frames):
-                return
-
-        elif direction == PREV:
-            index = self.active-1
-            if self.active-1 < 0:
-                return
-        # move layer.
-        if direction == PREV:
-            self.image.raise_layer(self.frames[self.active].layer)
-        elif direction == NEXT:
-            self.image.lower_layer(self.frames[self.active].layer)
-
-        # update Timeline
-        self._scan_image_layers()
-        self.active = index
-        self.on_goto(None,NOWHERE)
-
-    def on_remove(self,widget):
-        """
-        Remove the atual selected frame, and his layer. and if the case his sublayers.
-        """
-        if not self.frames:
-            return 
-
-        if self.active > 0:
-            self.on_goto(None,PREV,True)
-
-        index = self.active + 1
-        if self.active == 0:
-            index = self.active
-
-        self.image.remove_layer(self.frames[index].layer)
-        self.frame_bar.remove (self.frames[index])
-        self.frames[index].destroy()
-        self.frames.remove(self.frames[index])
-
-        if len(self.frames) == 0:
-            self._toggle_enable_buttons(NO_FRAMES)
-        else :
-            self.on_goto(None,None,True)
-
-
-    def on_add(self,widget):
-        """
-        Add new layer to the image and a new frame to the Timeline.
-        """
-
-        name = "Frame " + str(len(self.frames))
-        # create the layer to add
-        l = gimp.Layer(self.image,name, self.image.width,self.image.height,RGBA_IMAGE,100,NORMAL_MODE)
-
-        # adding layer
-        self.image.add_layer(l,self.active+1)
-        if self.new_layer_type == TRANSPARENT_FILL:
-            pdb.gimp_edit_clear(l)
-        #elif self.new_layer_type == BACKGROUND_FILL:
-            #pass
-
-        self._scan_image_layers()
-        self.on_goto(None,NEXT,True)
-
-        if len(self.frames) == 1 :
-            self._toggle_enable_buttons(NO_FRAMES)
-
-    def on_goto(self,widget,to,update=False):
-        """
-        This method change the atual active frame to when the variable
-        (to) indicate, the macros are (START, END, NEXT, PREV)
-        - called once per frame when is_playing is enabled.
-        """
-        self.layers_show(False)
-
-        if update:
-            self.frames[self.active].update_layer_info()
-
-        if to == START:
-            self.active = 0
-
-        elif to == END:
-            self.active = len(self.frames)-1
-
-        elif to == NEXT:
-            i = self.active + 1
-            if i > len(self.frames)-1:
-                i = 0
-            self.active = i
-
-        elif to == PREV:
-            i = self.active - 1
-            if i < 0:
-                i= len(self.frames)-1
-            self.active = i
-
-        self.layers_show(True)
-        self.image.active_layer = self.frames[self.active].layer
-        gimp.displays_flush() # update the gipms displays to show de changes.
 
     def layers_show(self,state):
         """
