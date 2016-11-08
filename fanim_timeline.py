@@ -10,13 +10,24 @@
 FAnim
 Timeline
 
+This module implements a timeline window for GIMP, this timeline will help with
+frame by frame animations.
+
 """
 from gimpfu import *
 import pygtk
 pygtk.require('2.0')
-import gtk, array, time, os
+import gtk, array, time, os, json
 
 WINDOW_TITLE = "GIMP FAnim Timeline [%s]"
+VERSION = 1.0
+# general info
+AUTHORS = [
+        "Douglas Knowman <douglasknowman@gmail.com>"
+        ]
+NAME = "FAnim Timeline " + str(VERSION)
+COPYRIGHT = "Copyright (C) 2016 \nDouglas Knowman"
+WEBSITE = "http://www.google.com"
 # playback macros
 NEXT = 1
 PREV = 2
@@ -24,10 +35,14 @@ END = 3
 START = 4
 NOWHERE = 5
 POS = 6
+GIMP_ACTIVE = 7
 
 # settings variable macros
+WIN_WIDTH = "win_width"
+WIN_HEIGHT = "win_height"
+WIN_POSX = "win_posx"
+WIN_POSY = "win_posy"
 FRAMERATE = "framerate"
-FRAME_TIME = "frame_time"
 OSKIN_DEPTH = "oskin_depth"
 OSKIN_ONPLAY = "oskin_onplay"
 OSKIN_FORWARD = "oskin_forward"
@@ -74,8 +89,45 @@ class Utils:
         h.pack_start(b)
         return h,adjustment
 
+    @staticmethod
+    def load_conffile(filename):
+        """
+        Load configuration from a file stored in gimp user folder.
+        """
+        directory = gimp.directory + "/fanim"
+        if not os.path.exists(directory):
+            os.mkdir(directory)
+
+        filepath = directory + "/" + filename
+        if os.path.exists(filepath):
+            f = open(filepath,'r')
+            dic = json.load(f)
+            f.close()
+            return dic
+
+        else:
+            return None
+
+    @staticmethod
+    def save_conffile(filename,conf={}):
+        """
+        Save a configuration dictionary in a json file on user folder.
+        """
+        directory = gimp.directory + "/fanim"
+        if not os.path.exists(directory):
+            os.mkdir(directory)
+
+        filepath = directory + "/" + filename
+        f = open(filepath,'w')
+        json.dump(conf,f)
+        f.close()
+        
+
 
 class ConfDialog(gtk.Dialog):
+    """
+    Create a configuration dialog to the user change the variables.
+    """
     def __init__(self,title="Config",parent=None,config = None):
         gtk.Dialog.__init__(self,title,parent, gtk.DIALOG_DESTROY_WITH_PARENT,
                 ('Apply',gtk.RESPONSE_APPLY,'Cancel',gtk.RESPONSE_CANCEL))
@@ -103,17 +155,15 @@ class ConfDialog(gtk.Dialog):
         # create the frames to contein the diferent settings.
         f_time = gtk.Frame(label="Time")
         f_oskin = gtk.Frame(label="Onion Skin")
-        self.set_size_request(400,-1)
+        self.set_size_request(300,-1)
         self.vbox.pack_start(f_time,True,True,h_space)
         self.vbox.pack_start(f_oskin,True,True,h_space)
 
         # create the time settings.
         th = gtk.HBox()
-        fps,fps_spin = Utils.spin_button("Fps",'int',self.last_config[FRAMERATE],1,100) #conf fps
-        ftime,ftime_spin = Utils.spin_button("Frame Time",'float',self.last_config[FRAME_TIME],0.001,5,0.1)
+        fps,fps_spin = Utils.spin_button("Framerate",'int',self.last_config[FRAMERATE],1,100) #conf fps
 
         th.pack_start(fps,True,True,h_space)
-        th.pack_start(ftime,True,True,h_space)
 
         f_time.add(th)
         # create onion skin settings
@@ -147,7 +197,6 @@ class ConfDialog(gtk.Dialog):
         # connect a callback to all
         
         fps_spin.connect("value_changed",self.update_config,FRAMERATE)
-        ftime_spin.connect("value_changed",self.update_config,FRAME_TIME)
         depth_spin.connect("value_changed",self.update_config,OSKIN_DEPTH)
         on_play.connect("toggled",self.update_config,OSKIN_ONPLAY)
         forward.connect("toggled",self.update_config,OSKIN_FORWARD)
@@ -166,11 +215,11 @@ class ConfDialog(gtk.Dialog):
         return result, conf
 
 class Player():
+    """
+    This class will implement a loop to play the frames through time, after
+    play each frame, a gtk event handler is called to not freaze the UI.
+    """
     def __init__(self,timeline,play_button):
-        """
-        this class will implement a loop to play through time the frames, after
-        play each frame, a gtk event handler is called to not freaze the UI.
-        """
 
         self.timeline = timeline
         self.play_button = play_button
@@ -191,6 +240,9 @@ class Player():
 
 
 class AnimFrame(gtk.EventBox):
+    """
+    A Frame representation for gtk.
+    """
     def __init__(self,layer,width=100,height=120):
         gtk.EventBox.__init__(self)
         self.set_size_request(width,height)
@@ -259,12 +311,10 @@ class Timeline(gtk.Window):
         self.play_bar = None
         
         # frames
-        self.frames = []
-        self.selected = []
-        self.active = None
+        self.frames = [] # all frame widgets
+        self.active = None  # active frame / gimp layer
 
         self.framerate = 30
-        self.frame_time = 0.01
 
         # new frame.
         self.new_layer_type = TRANSPARENT_FILL
@@ -280,6 +330,9 @@ class Timeline(gtk.Window):
 
         self.play_thread = None
 
+        # gtk window
+        self.win_pos = (20,20)
+        self.win_size = (200,200)
         # create all widgets
         self._setup_widgets()
 
@@ -289,6 +342,9 @@ class Timeline(gtk.Window):
             #self.on_toggle_play(None)
             self.is_playing = False
         self.on_goto(None,START)
+
+        #save the settings before quit.
+        Utils.save_conffile("conf.json",self.get_settings())
 
         gtk.main_quit()
 
@@ -304,14 +360,27 @@ class Timeline(gtk.Window):
                     break
         return rcpath
 
+    def on_window_resize(self,*args):
+        # update the window position  to save later on.
+        self.win_pos = self.get_position()
+
     def _setup_widgets(self):
         """
         create all the window staticaly placed widgets.
         """
+        #load the saved setting before start.
+        self.set_settings(Utils.load_conffile("conf.json"))
+
         # basic window definitions
         self.connect("destroy",self.destroy)
-        self.set_default_size(400,140)
+        self.connect("focus_in_event",self.on_window_focus)
+        self.connect("configure_event",self.on_window_resize)
+
+        self.set_default_size(self.win_size[0],self.win_size[1])
         self.set_keep_above(True)
+        
+        #self.set_position(gtk.WIN_POS_CENTER_ON_PARENT)
+        self.move(self.win_pos[0],self.win_pos[1])
 
         # parse gimp theme gtkrc
         gtkrc_path  = self._get_theme_gtkrc(gimp.personal_rc_file('themerc'))
@@ -348,14 +417,14 @@ class Timeline(gtk.Window):
         # catch all layers
         self._scan_image_layers()
         self.active = 0
-        self.on_goto(None,START)
+        self.on_goto(None,GIMP_ACTIVE)
 
         # finalize showing all widgets
         self.show_all()
 
     def _scan_image_layers(self):
         """
-        If exists frames this function clears all, after that the image layers
+        If exists frames this function destroys all, after that the image layers
         is scanned and the frames are recreated.
         """
         layers = self.image.layers
@@ -458,6 +527,13 @@ class Timeline(gtk.Window):
         b_back.connect("clicked",self.on_move,PREV)
         b_forward.connect("clicked",self.on_move,NEXT)
 
+        # tooltips
+        b_rem.set_tooltip_text("Remove a frame/layer")
+        b_add.set_tooltip_text("Add a frame/layer")
+        b_copy.set_tooltip_text("Duplicate the atual selected frame")
+        b_back.set_tooltip_text("Move the atual selected frame backward")
+        b_forward.set_tooltip_text("Move the atual selected frame forward")
+
         # packing everything in gbar
         map(lambda x: edit_bar.pack_start(x,False,False,0),w)
 
@@ -473,6 +549,9 @@ class Timeline(gtk.Window):
         # connect
         b_conf.connect("clicked",self.on_config)
 
+        # tooltips
+        b_conf.set_tooltip_text("open configuration dialog")
+
         config_bar.pack_start(b_conf,False,False,0)
         return config_bar
 
@@ -486,6 +565,9 @@ class Timeline(gtk.Window):
 
         # connect widgets
         b_active.connect("clicked",self.on_onionskin)
+
+        # tooltips
+        b_active.set_tooltip_text("enable/disable the onion skin effect")
 
         # add to the disable on play list
         w = [b_active]
@@ -502,10 +584,19 @@ class Timeline(gtk.Window):
 
         b_about = Utils.button_stock(gtk.STOCK_ABOUT,stock_size)
         b_export = Utils.button_stock(gtk.STOCK_CONVERT,stock_size)
+        # disable export button until implementation.
+        b_export.set_sensitive(False)
+        # TODO implement export button
+        
         b_quit = Utils.button_stock(gtk.STOCK_QUIT,stock_size)
 
         # callbacks
         b_quit.connect('clicked',self.destroy)
+        b_about.connect('clicked',self.on_about)
+
+        # tooltips
+        b_about.set_tooltip_text("About FAnim")
+        b_quit.set_tooltip_text("Exit")
 
         # add to the disable on play list
         w = [b_about, b_export, b_quit]
@@ -515,24 +606,32 @@ class Timeline(gtk.Window):
         map(lambda x: general_bar.pack_start(x,False,False,0),w)
 
         return general_bar
+
     def get_settings(self):
         s = {}
         s[FRAMERATE] = self.framerate
-        s[FRAME_TIME] = self.frame_time
         s[OSKIN_DEPTH] = self.oskin_depth
         s[OSKIN_FORWARD] = self.oskin_forward
         s[OSKIN_BACKWARD] = self.oskin_backward
         s[OSKIN_ONPLAY] = self.oskin_onplay
+
+        s[WIN_POSX] = self.win_pos[0]
+        s[WIN_POSY] = self.win_pos[1]
+        s[WIN_WIDTH] = self.get_allocation()[2]
+        s[WIN_HEIGHT] = self.get_allocation()[3]
         return s
 
     def set_settings(self,conf):
+        if conf == None:
+            return
 
         self.framerate = int(conf[FRAMERATE])
-        self.frame_time = conf[FRAME_TIME]
         self.oskin_depth = int(conf[OSKIN_DEPTH])
         self.oskin_forward = conf[OSKIN_FORWARD]
         self.oskin_backward = conf[OSKIN_BACKWARD]
         self.oskin_onplay = conf[OSKIN_ONPLAY]
+        self.win_size  = (conf[WIN_WIDTH],conf[WIN_HEIGHT])
+        self.win_pos = (conf[WIN_POSX],conf[WIN_POSY])
 
     def _toggle_enable_buttons(self,state):
         if state == PLAYING:
@@ -543,6 +642,23 @@ class Timeline(gtk.Window):
 
 
 #----------------------Callback Functions----------------#
+    def on_window_focus(self,widget,other):
+        """
+        Update all timeline thumbnails.
+        """
+        self._scan_image_layers()
+        self.on_goto(None,GIMP_ACTIVE)
+
+    def on_about(self,widget):
+        about = gtk.AboutDialog()
+
+        about.set_authors(AUTHORS)
+        about.set_program_name(NAME)
+        about.set_copyright(COPYRIGHT)
+        about.set_website(WEBSITE)
+
+        about.run()
+        about.destroy()
 
     def on_toggle_play(self,widget):
         """
@@ -579,6 +695,9 @@ class Timeline(gtk.Window):
         self.is_replay = widget.get_active()
 
     def on_onionskin(self,widget):
+        """
+        Toggle onionskin.
+        """
         self.layers_show(False) # clear remaining onionskin frames
         self.oskin = widget.get_active()
         self.on_goto(None,NOWHERE,True)
@@ -672,13 +791,16 @@ class Timeline(gtk.Window):
             self._toggle_enable_buttons(NO_FRAMES)
 
     def on_click_goto(self,widget,event):
+        """
+        handlers a click on frame widgets.
+        """
         i = self.frames.index(widget)
         self.on_goto(None,POS,index=i)
 
     def on_goto(self,widget,to,update=False,index=0):
         """
         This method change the atual active frame to when the variable
-        (to) indicate, the macros are (START, END, NEXT, PREV)
+        (to) indicate, the macros are (START, END, NEXT, PREV,POS,GIMP_ACTIVE)
         - called once per frame when is_playing is enabled.
         """
         self.layers_show(False)
@@ -705,6 +827,9 @@ class Timeline(gtk.Window):
             self.active = i
         elif to == POS:
             self.active = index
+
+        elif to == GIMP_ACTIVE:
+            self.active = self.image.layers.index(self.image.active_layer)
 
         self.layers_show(True)
         self.image.active_layer = self.frames[self.active].layer
@@ -749,6 +874,9 @@ class Timeline(gtk.Window):
                         self.frames[pos].layer.opacity = o
 
 def timeline_main(image,drawable):
+    """
+    gimp call initial function, created the main timeline window.
+    """
     global WINDOW_TITLE
     WINDOW_TITLE = WINDOW_TITLE % (image.name)
     win = Timeline(WINDOW_TITLE,image)

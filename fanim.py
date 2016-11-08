@@ -8,7 +8,7 @@
   Distributed under the terms of GNU GPL v3 (or lesser GPL) license.
 
 FAnim:
-This package register the FAnim modules into GIMP.
+This module register the FAnim modules into GIMP.
 
 """
 from gimpfu import register, main
