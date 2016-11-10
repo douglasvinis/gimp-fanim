@@ -28,6 +28,7 @@ AUTHORS = [
 NAME = "FAnim Timeline " + str(VERSION)
 COPYRIGHT = "Copyright (C) 2016 \nDouglas Knowman"
 WEBSITE = "http://www.google.com"
+
 # playback macros
 NEXT = 1
 PREV = 2
@@ -226,13 +227,15 @@ class Player():
         self.cnt = 0
 
     def start(self):
+        
         while  self.timeline.is_playing:
-            time.sleep((1.0/self.timeline.framerate) + self.timeline.frame_time)
-
-            if not self.timeline.is_replay and self.timeline.active >= len(self.timeline.frames)-1:
-                self.timeline.on_toggle_play(self.play_button)
+            time.sleep(1.0/self.timeline.framerate)
 
             self.timeline.on_goto(None,NEXT)
+
+            # if all frames is already played, and is no replay, stop the loop.
+            if not self.timeline.is_replay and self.timeline.active >= len(self.timeline.frames)-1:
+                self.timeline.on_toggle_play(self.play_button)
 
             # call gtk event handler.
             while gtk.events_pending():
@@ -313,6 +316,7 @@ class Timeline(gtk.Window):
         # frames
         self.frames = [] # all frame widgets
         self.active = None  # active frame / gimp layer
+        self.before_play = None # active frame before play
 
         self.framerate = 30
 
@@ -328,7 +332,7 @@ class Timeline(gtk.Window):
         self.oskin_opacity_decay = 20.0
         self.oskin_onplay= True
 
-        self.play_thread = None
+        self.player = None
 
         # gtk window
         self.win_pos = (20,20)
@@ -675,19 +679,28 @@ class Timeline(gtk.Window):
         self.is_playing = not self.is_playing
 
         if self.is_playing:
+            # saving the atual frame before start to play.
+            if self.before_play == None:
+                self.before_play = self.active
+
             widget.set_image(self.play_button_images[1]) # set pause image to the button
 
-            # start the thread to make the changes on the frames in background
-            if not self.play_thread:
-                self.play_thread = Player(self,widget)
+            # start the player object to play the frames in a sequence.
+            if not self.player:
+                self.player = Player(self,widget)
             # block every other button than pause.
             self._toggle_enable_buttons(PLAYING)
 
             # start the loop to play the frames.
-            self.play_thread.start()
+            self.player.start()
 
         else :
-            widget.set_image(self.play_button_images[0])
+            # restore last frame before play.
+            if self.before_play != None:
+                self.on_goto(None,POS,index=self.before_play)
+                self.before_play = None
+
+            widget.set_image(self.play_button_images[0]) # set play image
             self._toggle_enable_buttons(PLAYING)
             self.on_goto(None,NOWHERE) # update atual frame.
 
@@ -768,6 +781,8 @@ class Timeline(gtk.Window):
         Add new layer to the image and a new frame to the Timeline.
         if copy is true them the current layer will be copy.
         """
+        # starting gimp undo group
+        self.image.undo_group_start()
 
         name = "Frame " + str(len(self.frames))
         # create the layer to add
@@ -790,6 +805,9 @@ class Timeline(gtk.Window):
         if len(self.frames) == 1 :
             self._toggle_enable_buttons(NO_FRAMES)
 
+        # ending gimp undo group
+        self.image.undo_group_end()
+
     def on_click_goto(self,widget,event):
         """
         handlers a click on frame widgets.
@@ -803,6 +821,7 @@ class Timeline(gtk.Window):
         (to) indicate, the macros are (START, END, NEXT, PREV,POS,GIMP_ACTIVE)
         - called once per frame when is_playing is enabled.
         """
+
         self.layers_show(False)
 
         if update:
@@ -833,12 +852,17 @@ class Timeline(gtk.Window):
 
         self.layers_show(True)
         self.image.active_layer = self.frames[self.active].layer
-        gimp.displays_flush() # 
+
+        gimp.displays_flush() # update the gimp GUI
+
 
     def layers_show(self,state):
         """
         Util function to hide the old frames and show the next.
         """
+        # freese the gimp undo system.
+        self.image.undo_freeze()
+
         opacity = 0
 
         self.frames[self.active].layer.opacity = 100.0
@@ -872,6 +896,10 @@ class Timeline(gtk.Window):
                         o = opacity - i * self.oskin_opacity_decay
                         self.frames[pos].layer.visible = state
                         self.frames[pos].layer.opacity = o
+
+        # unfreese the gimp undo system.
+        self.image.undo_thaw()
+
 
 def timeline_main(image,drawable):
     """
