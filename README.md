@@ -1,15 +1,16 @@
 GIMP Frame Animation Tool
 
-FAnim is a GIMP plugin to help frame by frame animation. 
+FAnim is a GIMP plugin to help on frame by frame animation. 
 
 features:
--Frame Timeline, based on layers.
--Play the animation on screen, without the need of open a new window.
--dynamic onion skin backward and forward with adjustable depth level.
--convert to spritesheet.
--adjustable frame speed and global each frame time duration.
+-Frame Timeline, based on layers. [DONE]
+-Play the animation on screen, without the need of open a new window. [DONE]
+-dynamic onionskin backward and forward with adjustable depth level. [DONE]
+-convert to spritesheet.  [WORKING]
+-adjustable framerate. [DONE]
+-consistent settings. [DONE]
 
-Installing:
+Instalation:
 you can copy the fanim.py and fanim_timeline.py into you gimp plugin directory
 the path is shown below.
 
@@ -22,7 +23,5 @@ will see in the tool bar the "FAnim" menu.
 
 Using:
 you have to create a new image to start the timeline window,you can open just
-one timeline for image. for the timeline work you need to start it, be aware
-that start them the atual layers of the image will be deleted and substituted 
-for "frame layers" after that you timeline is ready to work, you can create new 
-frames, delete, select and so on.
+one timeline by image. after open it the timeline is ready to work, you can create new 
+"frames", delete, select and so on.
