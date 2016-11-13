@@ -27,7 +27,7 @@ AUTHORS = [
         ]
 NAME = "FAnim Timeline " + str(VERSION)
 COPYRIGHT = "Copyright (C) 2016 \nDouglas Knowman"
-WEBSITE = "http://www.google.com"
+WEBSITE = "https://github.com/douglasknowman/gimp-fanim"
 
 # playback macros
 NEXT = 1

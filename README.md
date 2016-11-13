@@ -1,6 +1,7 @@
 __GIMP Frame Animation Tool (FAnim)__  
 
 FAnim is a GIMP plugin to help on frame by frame animation.   
+![alt tag](http://i.imgur.com/lnCWfES.png)  
 
 __Features:__  
 -Frame Timeline, based on layers. [DONE]  
