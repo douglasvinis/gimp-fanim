@@ -29,6 +29,9 @@ NAME = "FAnim Timeline " + str(VERSION)
 COPYRIGHT = "Copyright (C) 2016 \nDouglas Knowman"
 WEBSITE = "https://github.com/douglasknowman/gimp-fanim"
 
+# fixed frames prefix in the end to store visibility fix for the playback understand.
+PREFIX="_fix"
+
 # playback macros
 NEXT = 1
 PREV = 2
@@ -54,28 +57,38 @@ PLAYING = 1
 NO_FRAMES = 2
 
 class Utils:
-    fixed_frames = {}
-    @staticmethod
-    def set_fixed_frame(id,state):
-        """
-        set the state of a frame if it visibility is fixed or not.
-        """
-        Utils.fixed_frames[id] = state
 
     @staticmethod
-    def get_fixed_frame(id):
+    def add_fixed_prefix(layer):
         """
-        get the state of a frame if it visibility is fixed or not.
+        add the prefix at the end of the layer name to store if the frae is 
+        visibly fixed or not.
         """
-        if id in Utils.fixed_frames.keys():
-            return Utils.fixed_frames[id]
-        else :
-            return False
+        if Utils.is_frame_fixed(layer): return
+        layer.name = layer.name + PREFIX
+
+    @staticmethod
+    def rem_fixed_prefix(layer):
+        """
+        remove the prefix at the end of the layer name to store if the frae is 
+        visibly fixed or not.
+        """
+        if not Utils.is_frame_fixed(layer): return
+        layer.name = layer.name[:-4]
+
+
+    @staticmethod
+    def is_frame_fixed(layer):
+        """
+        get if the frame is visibly fixed or not based on the name of the layer.
+        """
+        name = layer.name
+        return name[-4:] == PREFIX
 
     @staticmethod
     def button_stock(stock,size):
         """
-        Return a button with a image from stock items 
+        Return a button with a image from stock items.
         """
         b = gtk.Button()
         img = gtk.Image()
@@ -293,8 +306,10 @@ class AnimFrame(gtk.EventBox):
     def on_toggle_fix(self,widget):
         self.fixed = widget.get_active()
         if widget.get_active():
+            Utils.add_fixed_prefix(self.layer)
             self._fix_button.set_image(self._fix_button_images[0])
         else:
+            Utils.rem_fixed_prefix(self.layer)
             self._fix_button.set_image(self._fix_button_images[1])
 
     def _setup(self):
@@ -303,7 +318,9 @@ class AnimFrame(gtk.EventBox):
         # creating the fix button, to anchor background frames.
         self._fix_button = Utils.toggle_button_stock(gtk.STOCK_MEDIA_RECORD,20)
         self._fix_button.set_tooltip_text("toggle fixed visibility.")
-        self.fixed = Utils.get_fixed_frame(self.layer.ID)
+
+        # update fixed variable
+        self.fixed = Utils.is_frame_fixed(self.layer)
         #images
         pin_img = gtk.Image()
         pin_img.set_from_stock(gtk.STOCK_YES,20)
@@ -492,7 +509,6 @@ class Timeline(gtk.Window):
 
         if self.frames:
             for frame in self.frames:
-                Utils.set_fixed_frame(frame.layer.ID,frame.fixed)
                 self.frame_bar.remove(frame)
                 frame.destroy()
             self.frames = []
@@ -645,9 +661,10 @@ class Timeline(gtk.Window):
         general_bar = gtk.HBox()
 
         b_about = Utils.button_stock(gtk.STOCK_ABOUT,stock_size)
-        b_export = Utils.button_stock(gtk.STOCK_CONVERT,stock_size)
-        # disable export button until implementation.
-        b_export.set_sensitive(False)
+
+        b_to_gif = Utils.button_stock(gtk.STOCK_CONVERT,stock_size)
+        b_to_sprite = Utils.button_stock(gtk.STOCK_MISSING_IMAGE,stock_size)
+
         # TODO implement export button
         
         b_quit = Utils.button_stock(gtk.STOCK_QUIT,stock_size)
@@ -659,9 +676,11 @@ class Timeline(gtk.Window):
         # tooltips
         b_about.set_tooltip_text("About FAnim")
         b_quit.set_tooltip_text("Exit")
+        b_to_gif.set_tooltip_text("Create a formated Image to export as gif animation")
+        b_to_sprite.set_tooltip_text("Create a formated Image to export as spritesheet")
 
         # add to the disable on play list
-        w = [b_about, b_export, b_quit]
+        w = [b_about, b_to_gif,b_to_sprite, b_quit]
         map(lambda x: self.widgets_to_disable.append(x),w)
 
         # packing everything in gbar
