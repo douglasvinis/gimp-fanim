@@ -7,7 +7,9 @@ __Features:__
 -Frame Timeline, based on layers. [DONE]  
 -Play the animation on screen, without the need of open a new window. [DONE]  
 -dynamic onionskin backward and forward with adjustable depth level. [DONE]  
--convert to spritesheet.  [WIP]  
+-convert to spritesheet.  [NO]  
+-convert to gif. [NO]  
+-frames with fixed visibility [WIP]  
 -adjustable framerate. [DONE]  
 -consistent settings. [DONE]  
   

@@ -54,6 +54,24 @@ PLAYING = 1
 NO_FRAMES = 2
 
 class Utils:
+    fixed_frames = {}
+    @staticmethod
+    def set_fixed_frame(id,state):
+        """
+        set the state of a frame if it visibility is fixed or not.
+        """
+        Utils.fixed_frames[id] = state
+
+    @staticmethod
+    def get_fixed_frame(id):
+        """
+        get the state of a frame if it visibility is fixed or not.
+        """
+        if id in Utils.fixed_frames.keys():
+            return Utils.fixed_frames[id]
+        else :
+            return False
+
     @staticmethod
     def button_stock(stock,size):
         """
@@ -233,6 +251,13 @@ class Player():
 
             self.timeline.on_goto(None,NEXT)
 
+            # while has fixed frames jump to the next
+            while self.timeline.frames[self.timeline.active].fixed:
+                if not self.timeline.is_replay and self.timeline.active >= len(self.timeline.frames)-1:
+                    self.timeline.on_toggle_play(self.play_button)
+
+                self.timeline.on_goto(None,NEXT)
+
             # if all frames is already played, and is no replay, stop the loop.
             if not self.timeline.is_replay and self.timeline.active >= len(self.timeline.frames)-1:
                 self.timeline.on_toggle_play(self.play_button)
@@ -253,7 +278,10 @@ class AnimFrame(gtk.EventBox):
         self.thumbnail = None
         self.label = None
         self.layer = layer
+        self.fixed = False
 
+        self._fix_button_images = []
+        self._fix_button = None
         self._setup()
 
     def highlight(self,state):
@@ -262,9 +290,37 @@ class AnimFrame(gtk.EventBox):
         else :
             self.set_state(gtk.STATE_NORMAL)
 
+    def on_toggle_fix(self,widget):
+        self.fixed = widget.get_active()
+        if widget.get_active():
+            self._fix_button.set_image(self._fix_button_images[0])
+        else:
+            self._fix_button.set_image(self._fix_button_images[1])
+
     def _setup(self):
         self.thumbnail = gtk.Image()
         self.label = gtk.Label(self.layer.name)
+        # creating the fix button, to anchor background frames.
+        self._fix_button = Utils.toggle_button_stock(gtk.STOCK_MEDIA_RECORD,20)
+        self._fix_button.set_tooltip_text("toggle fixed visibility.")
+        self.fixed = Utils.get_fixed_frame(self.layer.ID)
+        #images
+        pin_img = gtk.Image()
+        pin_img.set_from_stock(gtk.STOCK_YES,20)
+        pin_img2 = gtk.Image()
+        pin_img2.set_from_stock(gtk.STOCK_MEDIA_RECORD,20)
+
+        self._fix_button_images = [pin_img,pin_img2]
+
+        ## connect
+        self._fix_button.connect('clicked',self.on_toggle_fix)
+
+        if self.fixed:
+            self._fix_button.set_image(self._fix_button_images[0])
+            self._fix_button.set_active(True)
+        else :
+            self._fix_button.set_image(self._fix_button_images[1])
+            self._fix_button.set_active(False)
 
         frame = gtk.Frame()
         layout = gtk.VBox()
@@ -275,6 +331,7 @@ class AnimFrame(gtk.EventBox):
         frame.add(layout)
 
         layout.pack_start(self.label)
+        layout.pack_start(self._fix_button)
         layout.pack_start(self.thumbnail)
         self._get_thumb_image()
 
@@ -435,6 +492,7 @@ class Timeline(gtk.Window):
 
         if self.frames:
             for frame in self.frames:
+                Utils.set_fixed_frame(frame.layer.ID,frame.fixed)
                 self.frame_bar.remove(frame)
                 frame.destroy()
             self.frames = []
@@ -860,7 +918,6 @@ class Timeline(gtk.Window):
         """
         Util function to hide the old frames and show the next.
         """
-        # freese the gimp undo system.
         self.image.undo_freeze()
 
         opacity = 0
@@ -875,12 +932,14 @@ class Timeline(gtk.Window):
         self.frames[self.active].layer.visible = state # show or hide the frame
         self.frames[self.active].highlight(state) # highlight or not the frame
 
-        if self.oskin and not(self.is_playing and not self.oskin_onplay):
+        if self.oskin and not(self.is_playing and not self.oskin_onplay) :
             # calculating the onionskin backward and forward
             for i in range(1,self.oskin_depth +1):
 
                 if self.oskin_backward:
                     pos = self.active - i
+                    if self.frames[pos].fixed: break #discard fixed frames
+
                     if pos >= 0:
                         # calculate onionskin depth opacity decay.
                         o = opacity - i * self.oskin_opacity_decay
@@ -889,6 +948,8 @@ class Timeline(gtk.Window):
 
                 if self.oskin_forward:
                     pos = self.active +i
+                    if self.frames[pos].fixed: break  #discard fixed frames
+
                     self.frames[self.active].layer.opacity = opacity
 
                     if pos <= len(self.frames)-1:
@@ -896,6 +957,10 @@ class Timeline(gtk.Window):
                         o = opacity - i * self.oskin_opacity_decay
                         self.frames[pos].layer.visible = state
                         self.frames[pos].layer.opacity = o
+
+        # freese the gimp undo system.
+        if self.frames[self.active].fixed and state == False:
+            self.frames[self.active].layer.visible = True
 
         # unfreese the gimp undo system.
         self.image.undo_thaw()
