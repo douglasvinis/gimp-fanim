@@ -673,6 +673,9 @@ class Timeline(gtk.Window):
         b_quit.connect('clicked',self.destroy)
         b_about.connect('clicked',self.on_about)
 
+        b_to_gif.connect('clicked',self.create_formated_version,'gif')
+        b_to_sprite.connect('clicked',self.create_formated_version,'spritesheet')
+
         # tooltips
         b_about.set_tooltip_text("About FAnim")
         b_quit.set_tooltip_text("Exit")
@@ -740,6 +743,46 @@ class Timeline(gtk.Window):
 
         about.run()
         about.destroy()
+
+    def create_formated_version(self,widget,format='gif'):
+        """
+        create a formated version of the animation to export as a giff or as a spritesheet.
+        """
+        # get normal and visibly fixed layers.
+        frame_layers = filter(lambda x: x.fixed == False,self.frames)
+        fixed_layers = filter(lambda x: x.fixed == True,self.frames)
+
+        new_image = gimp.Image(self.image.width,self.image.height,self.image.base_type)
+
+        # reversed frame layers.
+        r_frame_layers = frame_layers
+        r_frame_layers.reverse()
+
+        for fl in r_frame_layers:
+            group = gimp.GroupLayer(new_image,fl.layer.name)
+            
+            lcopy = pdb.gimp_layer_new_from_drawable(fl.layer,new_image)
+            lcopy.visible = True
+
+            new_image.add_layer(group,len(new_image.layers))
+            new_image.insert_layer(lcopy,group,0)
+
+            # get the background and foreground frames.
+            up_fixed = filter(lambda x: self.frames.index(x) < self.frames.index(fl),fixed_layers)
+            bottom_fixed = filter(lambda x: self.frames.index(x) > self.frames.index(fl),fixed_layers)
+
+            # copy and insert bg and fg frames.
+            cnt = 0
+            for ff in fixed_layers:
+                copy = pdb.gimp_layer_new_from_drawable(ff.layer,new_image)
+                if ff in up_fixed:
+                    new_image.insert_layer(copy,group,cnt)
+                    cnt +=1
+                if ff in bottom_fixed:
+                    new_image.insert_layer(copy,group,len(group.layers))
+
+        # show the image in a gimp display.
+        gimp.Display(new_image)
 
     def on_toggle_play(self,widget):
         """
