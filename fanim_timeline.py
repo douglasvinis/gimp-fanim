@@ -746,21 +746,23 @@ class Timeline(gtk.Window):
 
     def create_formated_version(self,widget,format='gif'):
         """
-        create a formated version of the animation to export as a giff or as a spritesheet.
+        Create a formated version of the animation to export as a giff or as a spritesheet.
         """
-        # get normal and visibly fixed layers.
-        frame_layers = filter(lambda x: x.fixed == False,self.frames)
-        fixed_layers = filter(lambda x: x.fixed == True,self.frames)
+        # get normal and visibly fixed frames.
+        normal_frames = filter(lambda x: x.fixed == False,self.frames)
+        fixed_frames = filter(lambda x: x.fixed == True,self.frames)
 
         new_image = gimp.Image(self.image.width,self.image.height,self.image.base_type)
 
-        # reversed frame layers.
-        r_frame_layers = frame_layers
-        r_frame_layers.reverse()
+        # reversed normal frames.
+        r_normal_frames = normal_frames
+        r_normal_frames.reverse()
 
-        for fl in r_frame_layers:
+        for fl in r_normal_frames:
+            # create a group to put the normal and the fixed frames.
             group = gimp.GroupLayer(new_image,fl.layer.name)
             
+            # copy normal layer
             lcopy = pdb.gimp_layer_new_from_drawable(fl.layer,new_image)
             lcopy.visible = True
 
@@ -768,12 +770,12 @@ class Timeline(gtk.Window):
             new_image.insert_layer(lcopy,group,0)
 
             # get the background and foreground frames.
-            up_fixed = filter(lambda x: self.frames.index(x) < self.frames.index(fl),fixed_layers)
-            bottom_fixed = filter(lambda x: self.frames.index(x) > self.frames.index(fl),fixed_layers)
+            up_fixed = filter(lambda x: self.frames.index(x) < self.frames.index(fl),fixed_frames)
+            bottom_fixed = filter(lambda x: self.frames.index(x) > self.frames.index(fl),fixed_frames)
 
-            # copy and insert bg and fg frames.
+            # copy and insert the fixed visibility layers/frames
             cnt = 0
-            for ff in fixed_layers:
+            for ff in fixed_frames:
                 copy = pdb.gimp_layer_new_from_drawable(ff.layer,new_image)
                 if ff in up_fixed:
                     new_image.insert_layer(copy,group,cnt)
@@ -781,8 +783,28 @@ class Timeline(gtk.Window):
                 if ff in bottom_fixed:
                     new_image.insert_layer(copy,group,len(group.layers))
 
-        # show the image in a gimp display.
-        gimp.Display(new_image)
+        if format == 'gif':
+            # show the formated image to export as gif.
+            gimp.Display(new_image)
+        elif format == 'spritesheet':
+            simg = gimp.Image(len(new_image.layers) * self.image.width,self.image.height,self.image.base_type)
+
+            cnt = 0
+            def novisible (x,state):
+                 x.visible = state
+            # copy each frame and position it side by side.
+            for l in new_image.layers:
+                cl = pdb.gimp_layer_new_from_drawable(l,simg)
+                simg.add_layer(cl,0)
+                cl.transform_2d(0,0,1,1,0,-cnt * new_image.width,0,1,0)
+                cnt +=1
+                map(lambda x:novisible(x,False),simg.layers)
+                cl.visible = True
+                simg.merge_visible_layers(1)
+
+            map(lambda x:novisible(x,True),simg.layers)
+            # show the formated image to export as spritesheet.
+            gimp.Display(simg)
 
     def on_toggle_play(self,widget):
         """
