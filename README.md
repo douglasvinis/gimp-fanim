@@ -1,15 +1,15 @@
 __GIMP Frame Animation Tool (FAnim)__  
 
 FAnim is a GIMP plugin to help on frame by frame animation.   
-![alt tag](http://i.imgur.com/lnCWfES.png)  
+![alt tag](http://i.imgur.com/O5LhTH7.png)  
 
 __Features:__  
 -Frame Timeline, based on layers. [DONE]  
 -Play the animation on screen, without the need of open a new window. [DONE]  
 -dynamic onionskin backward and forward with adjustable depth level. [DONE]  
--convert to spritesheet.  [WIP]  
--convert to gif. [WIP]  
--frames with fixed visibility [DONE]  
+-format to spritesheet.  [WIP]  
+-format to gif. [DONE]  
+-frames with fixed visibility (backgrounds & foregrounds) [DONE]  
 -adjustable framerate. [DONE]  
 -consistent settings. [DONE]  
   

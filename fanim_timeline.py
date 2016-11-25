@@ -754,11 +754,10 @@ class Timeline(gtk.Window):
 
         new_image = gimp.Image(self.image.width,self.image.height,self.image.base_type)
 
-        # reversed normal frames.
-        r_normal_frames = normal_frames
-        r_normal_frames.reverse()
+        # reverse the normal frames.
+        normal_frames.reverse()
 
-        for fl in r_normal_frames:
+        for fl in normal_frames:
             # create a group to put the normal and the fixed frames.
             group = gimp.GroupLayer(new_image,fl.layer.name)
             
@@ -786,18 +785,27 @@ class Timeline(gtk.Window):
         if format == 'gif':
             # show the formated image to export as gif.
             gimp.Display(new_image)
+
         elif format == 'spritesheet':
             simg = gimp.Image(len(new_image.layers) * self.image.width,self.image.height,self.image.base_type)
 
             cnt = 0
             def novisible (x,state):
+                # change the visibility of the gimp layers.
                  x.visible = state
+
             # copy each frame and position it side by side.
-            for l in new_image.layers:
+            # put the layers order back to normal.
+            n_img_layers = new_image.layers
+            n_img_layers.reverse()
+
+            for l in n_img_layers:
                 cl = pdb.gimp_layer_new_from_drawable(l,simg)
                 simg.add_layer(cl,0)
+
                 cl.transform_2d(0,0,1,1,0,-cnt * new_image.width,0,1,0)
                 cnt +=1
+                # merge the group as flat image.
                 map(lambda x:novisible(x,False),simg.layers)
                 cl.visible = True
                 simg.merge_visible_layers(1)
