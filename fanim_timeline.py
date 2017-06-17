@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 
 """
-  Copyright (C) 2016, Douglas Knowman
-  douglasknowman@gmail.com
+  Copyright (C) 2016, Douglas Vinicius
+  douglvini@gmail.com
 
   Distributed under the terms of GNU GPL v3 (or lesser GPL) license.
 
@@ -23,11 +23,11 @@ WINDOW_TITLE = "GIMP FAnim Timeline [%s]"
 VERSION = 1.0
 # general info
 AUTHORS = [
-        "Douglas Knowman <douglasknowman@gmail.com>"
+        "Douglas Vinicius <douglvini@gmail.com>"
         ]
 NAME = "FAnim Timeline " + str(VERSION)
-COPYRIGHT = "Copyright (C) 2016 \nDouglas Knowman"
-WEBSITE = "https://github.com/douglasknowman/gimp-fanim"
+COPYRIGHT = "Copyright (C) 2016 \nDouglas Vinicius"
+WEBSITE = "https://github.com/douglasvini/gimp-fanim"
 
 # fixed frames prefix in the end to store visibility fix for the playback understand.
 PREFIX="_fix"

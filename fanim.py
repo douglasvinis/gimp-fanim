@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 
 """
-  Copyright (C) 2016, Douglas Knowman
-  douglasknowman@gmail.com
+  Copyright (C) 2016, Douglas Vinicius
+  douglvini@gmail.com
 
   Distributed under the terms of GNU GPL v3 (or lesser GPL) license.
 
@@ -14,8 +14,8 @@ This module register the FAnim modules into GIMP.
 from gimpfu import register, main
 from fanim_timeline import timeline_main
 
-AUTHOR = "Douglas Knowman <douglasknowman@gmail.com"
-COPYRIGHT = "Douglas Knowman"
+AUTHOR = "Douglas Vinicius <douglvini@gmail.com"
+COPYRIGHT = "Douglas Vinicius"
 YEAR = "2016"
 
 # register the timeline.
