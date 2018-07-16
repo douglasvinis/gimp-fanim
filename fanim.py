@@ -642,16 +642,27 @@ class Timeline(gtk.Window):
         stock_size = gtk.ICON_SIZE_BUTTON
         config_bar = gtk.HBox()
 
+        b_to_gif = Utils.button_stock(gtk.STOCK_CONVERT,stock_size)
+        b_to_sprite = Utils.button_stock(gtk.STOCK_CONVERT,stock_size)
         b_conf = Utils.button_stock(gtk.STOCK_PREFERENCES,stock_size)
 
-        self.widgets_to_disable.append(b_conf)
         # connect
         b_conf.connect("clicked",self.on_config)
+        b_to_gif.connect('clicked',self.create_formated_version,'gif')
+        b_to_sprite.connect('clicked',self.create_formated_version,'spritesheet')
 
         # tooltips
         b_conf.set_tooltip_text("open configuration dialog")
+        b_to_gif.set_tooltip_text("Create a formated Image to export as gif animation")
+        b_to_sprite.set_tooltip_text("Create a formated Image to export as spritesheet")
 
-        config_bar.pack_start(b_conf,False,False,0)
+        # disable when is playing
+        w = [b_conf, b_to_gif,b_to_sprite]
+        map(lambda x: self.widgets_to_disable.append(x),w)
+
+        # pack into config_bar
+        map(lambda x: config_bar.pack_start(x,False,False,0),w)
+
         return config_bar
 
     def _setup_onionskin(self):
@@ -682,32 +693,21 @@ class Timeline(gtk.Window):
         general_bar = gtk.HBox()
 
         b_about = Utils.button_stock(gtk.STOCK_ABOUT,stock_size)
-
-        b_to_gif = Utils.button_stock(gtk.STOCK_CONVERT,stock_size)
-        b_to_sprite = Utils.button_stock(gtk.STOCK_MISSING_IMAGE,stock_size)
-
-        # TODO implement export button
-        
         b_quit = Utils.button_stock(gtk.STOCK_QUIT,stock_size)
 
         # callbacks
         b_quit.connect('clicked',self.destroy)
         b_about.connect('clicked',self.on_about)
 
-        b_to_gif.connect('clicked',self.create_formated_version,'gif')
-        b_to_sprite.connect('clicked',self.create_formated_version,'spritesheet')
-
         # tooltips
         b_about.set_tooltip_text("About FAnim")
         b_quit.set_tooltip_text("Exit")
-        b_to_gif.set_tooltip_text("Create a formated Image to export as gif animation")
-        b_to_sprite.set_tooltip_text("Create a formated Image to export as spritesheet")
 
         # add to the disable on play list
-        w = [b_about, b_to_gif,b_to_sprite, b_quit]
+        w = [b_about, b_quit]
         map(lambda x: self.widgets_to_disable.append(x),w)
 
-        # packing everything in gbar
+        # packing everything in general_bar
         map(lambda x: general_bar.pack_start(x,False,False,0),w)
 
         return general_bar
@@ -960,6 +960,8 @@ class Timeline(gtk.Window):
             self._toggle_enable_buttons(NO_FRAMES)
         else :
             self.on_goto(None,None,True)
+        # check if theres layers left.
+        self.on_window_focus(None,None);
 
     def on_add(self,widget,copy=False):
         """
