@@ -1,20 +1,18 @@
 __GIMP Frame by Frame Animation Tool (FAnim)__  
 
 FAnim is an GIMP plugin that creates a simple timeline to help create frame by frame animations based on layers.  
-<center>
 ![alt tag](https://i.imgur.com/S9rX2tu.png)  
-<i style="color:darkblue">
-If you have found a good use to this piece of software that is wrote by me, you may recognize the hard
-work behind it assisting me with a donation, so i can continue doing it better and better.  
-Thank You!  
-</i>
 
+**If you have found a good use to this piece of software that is wrote by me, you may recognize the hard
+work behind it assisting me with a donation, so i can continue doing it better and better.  
+Thank You!**  
+
+<p align="center">
 <a target="_blank" href="https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=JMF3ZCEPBRTY4&lc=US&currency_code=USD&bn=PP%2dDonationsBF%3abtn_donateCC_LG%2egif%3aNonHosted">
 <img src="https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif"></img>  
 PayPal
 </a>
-
-</center>
+</p>
 
 __Features:__  
 * Full set of buttons to help visualize each frame, move and create.
