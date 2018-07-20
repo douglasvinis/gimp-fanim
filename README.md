@@ -8,9 +8,8 @@ work behind it assisting me with a donation, so i can continue doing it better a
 Thank You!**  
 
 <p align="center">
-<a target="_blank" href="https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=JMF3ZCEPBRTY4&lc=US&currency_code=USD&bn=PP%2dDonationsBF%3abtn_donateCC_LG%2egif%3aNonHosted">
-<img src="https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif"></img>  
-PayPal
+<a href="https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=JMF3ZCEPBRTY4&lc=US&item_name=douglasvini&currency_code=USD&bn=PP%2dDonationsBF%3abtn_donateCC_LG%2egif%3aNonHosted">
+<img src="https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif"></img>
 </a>
 </p>
 
