@@ -6,6 +6,7 @@
   douglvini@gmail.com
 
   Distributed under the terms of GNU GPL v3 (or lesser GPL) license.
+
 Fanim is an extention for GIMP thats implements a simple timeline that can
 be used to play in sequence and manipulate layers that works as each frame of an 
 frame by frame animation.
@@ -19,7 +20,7 @@ pygtk.require('2.0')
 import gtk, array, time, os, json
 
 # general info
-VERSION = 1.1
+VERSION = 1.15
 AUTHORS = ["Douglas Vinicius <douglvini@gmail.com>"]
 NAME = "FAnim Timeline " + str(VERSION)
 WINDOW_TITLE = ("GIMP %s "%NAME)+ "[%s]"
@@ -268,20 +269,21 @@ class Player():
     def start(self):
         
         while  self.timeline.is_playing:
-            time.sleep(1.0/self.timeline.framerate)
 
             self.timeline.on_goto(None,NEXT)
 
             # while has fixed frames jump to the next
-            while self.timeline.frames[self.timeline.active].fixed:
-                if not self.timeline.is_replay and self.timeline.active >= len(self.timeline.frames)-1:
-                    self.timeline.on_toggle_play(self.play_button)
-
+            while self.timeline.frames[self.timeline.active].fixed \
+                    and self.timeline.active < len(self.timeline.frames):
                 self.timeline.on_goto(None,NEXT)
 
-            # if all frames is already played, and is no replay, stop the loop.
-            if not self.timeline.is_replay and self.timeline.active >= len(self.timeline.frames)-1:
+            # see if is the end of the timeline when theres no replay.
+            if not self.timeline.is_replay and self.timeline.active == \
+                    len(self.timeline.frames)-1:
                 self.timeline.on_toggle_play(self.play_button)
+
+            # wait some time to emulate framerate choose by the user.
+            time.sleep(1.0/self.timeline.framerate)
 
             # call gtk event handler.
             while gtk.events_pending():
@@ -431,7 +433,9 @@ class Timeline(gtk.Window):
         if self.is_playing:
             self.is_playing = False
             gimp.message("Please do not close the image with FAnim playing the animation.")
-        if widget != False: # for when this function is called without valid image variable.
+        if widget != False:# for when this function is called without valid image variable.
+            # return to the normal layers order.
+            pdb.script_fu_reverse_layers(self.image,None)
             self.on_goto(None,START)
 
         #save the settings before quit.
@@ -505,7 +509,11 @@ class Timeline(gtk.Window):
         base.pack_start(scroll_window,True,True,0)
         self.add(base)
         
-        # catch all layers
+        # invert the image so onionskin can be used propely, with backward frames be
+        # above the actual frame, sinse GIMP upper layers are firstly visible they cant
+        # be backward frames.
+        pdb.script_fu_reverse_layers(self.image,None)
+        # scan all layers
         self._scan_image_layers()
         self.active = 0
         self.on_goto(None,GIMP_ACTIVE)
@@ -528,8 +536,9 @@ class Timeline(gtk.Window):
                 frame.destroy()
             self.frames = []
 
-        #layers.reverse()
-        for layer in layers:
+        # here we get back the layers orders just in the timeline so the user can have
+        # a right interface.
+        for layer in reversed(layers):
             # start properties
             layer.mode = NORMAL_MODE
             layer.opacity = 100.0
@@ -765,6 +774,7 @@ class Timeline(gtk.Window):
             else:
                 if self.active >= len(self.image.layers):
                     self.active = len(self.image.layers)-1
+
                 self._scan_image_layers()
                 self.on_goto(None,GIMP_ACTIVE)
 
@@ -783,11 +793,18 @@ class Timeline(gtk.Window):
         """
         Create a formated version of the animation to export as a giff or as a spritesheet.
         """
+        # disabling the onionskin temporaly if is activated
+        oskin_disabled = False
+        if self.oskin:
+            self.on_onionskin(None)
+            oskin_disabled = True
+
         # get normal and visibly fixed frames.
         normal_frames = filter(lambda x: x.fixed == False,self.frames)
         fixed_frames = filter(lambda x: x.fixed == True,self.frames)
 
         new_image = gimp.Image(self.image.width,self.image.height,self.image.base_type)
+
 
         # reverse the normal frames.
         normal_frames.reverse()
@@ -804,18 +821,18 @@ class Timeline(gtk.Window):
             new_image.insert_layer(lcopy,group,0)
 
             # get the background and foreground frames.
-            up_fixed = filter(lambda x: self.frames.index(x) < self.frames.index(fl),fixed_frames)
-            bottom_fixed = filter(lambda x: self.frames.index(x) > self.frames.index(fl),fixed_frames)
+            up_fixed = filter(lambda x: self.frames.index(x) > self.frames.index(fl),fixed_frames)
+            bottom_fixed = filter(lambda x: self.frames.index(x) < self.frames.index(fl),fixed_frames)
 
             # copy and insert the fixed visibility layers/frames
-            cnt = 0
+            b =0
             for ff in fixed_frames:
                 copy = pdb.gimp_layer_new_from_drawable(ff.layer,new_image)
-                if ff in up_fixed:
-                    new_image.insert_layer(copy,group,cnt)
-                    cnt +=1
                 if ff in bottom_fixed:
-                    new_image.insert_layer(copy,group,len(group.layers))
+                    new_image.insert_layer(copy,group,len(group.layers)-b)
+                    b+= 1
+                elif ff in up_fixed:
+                    new_image.insert_layer(copy,group,0)
 
         if format == 'gif':
             # show the formated image to export as gif.
@@ -848,6 +865,9 @@ class Timeline(gtk.Window):
             map(lambda x:novisible(x,True),simg.layers)
             # show the formated image to export as spritesheet.
             gimp.Display(simg)
+        # return onionskin if was enabled
+        if oskin_disabled:
+            self.on_onionskin(None)
 
     def on_toggle_play(self,widget):
         """
@@ -897,7 +917,9 @@ class Timeline(gtk.Window):
         Toggle onionskin.
         """
         self.layers_show(False) # clear remaining onionskin frames
-        self.oskin = widget.get_active()
+        if widget == None:
+            self.oskin = not self.oskin
+        else: self.oskin = widget.get_active()
         self.on_goto(None,NOWHERE,True)
 
     def on_config(self,widget):
@@ -927,9 +949,9 @@ class Timeline(gtk.Window):
             if self.active-1 < 0:
                 return
         # move layer.
-        if direction == PREV:
+        if direction == NEXT:
             self.image.raise_layer(self.frames[self.active].layer)
-        elif direction == NEXT:
+        elif direction == PREV:
             self.image.lower_layer(self.frames[self.active].layer)
 
         # update Timeline
@@ -944,12 +966,10 @@ class Timeline(gtk.Window):
         if not self.frames:
             return 
 
+        index = 0
         if self.active > 0:
             self.on_goto(None,PREV,True)
-
-        index = self.active + 1
-        if self.active == 0:
-            index = self.active
+            index = self.active + 1
 
         self.image.remove_layer(self.frames[index].layer)
         self.frame_bar.remove (self.frames[index])
@@ -982,7 +1002,7 @@ class Timeline(gtk.Window):
             l.name = name
 
         # adding layer
-        self.image.add_layer(l,self.active+1)
+        self.image.add_layer(l,len(self.image.layers)-self.active-1)
         if self.new_layer_type == TRANSPARENT_FILL and not copy:
             pdb.gimp_edit_clear(l)
 
@@ -1034,7 +1054,10 @@ class Timeline(gtk.Window):
             self.active = index
 
         elif to == GIMP_ACTIVE:
-            self.active = self.image.layers.index(self.image.active_layer)
+            if self.image.active_layer in self.image.layers:
+                self.active = self.image.layers.index(self.image.active_layer)
+                self.active = len(self.image.layers)-1-self.active
+            else :self.active = 0
 
         self.layers_show(True)
         self.image.active_layer = self.frames[self.active].layer
@@ -1080,7 +1103,7 @@ class Timeline(gtk.Window):
                 pos = self.active +i
                 if self.oskin_forward and pos <= len(self.frames)-1:
                     is_fixed = self.frames[pos].fixed
-                    self.frames[self.active].layer.opacity = min(100.0, 1.5*opacity)
+                    #self.frames[self.active].layer.opacity = min(100.0, 1.5*opacity)
 
                     if not is_fixed:# discard fixed frames
                         # calculate onionskin depth opacity decay.
