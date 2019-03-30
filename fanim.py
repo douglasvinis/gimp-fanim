@@ -20,13 +20,13 @@ pygtk.require('2.0')
 import gtk, array, time, os, json
 
 # general info
-VERSION = 1.15
+VERSION = 1.16
 AUTHORS = ["Douglas Vinicius <douglvini@gmail.com>"]
 NAME = "FAnim Timeline " + str(VERSION)
 WINDOW_TITLE = ("GIMP %s "%NAME)+ "[%s]"
-COPYRIGHT = "Copyright (C) 2016-2018 \nDouglas Vinicius"
+COPYRIGHT = "Copyright (C) 2016-2019 \nDouglas Vinicius"
 WEBSITE = "https://github.com/douglasvini/gimp-fanim"
-YEAR = "2016-2018"
+YEAR = "2016-2019"
 DESCRIPTION = "Timeline to edit frames and play animations with some aditional functionality."
 GIMP_LOCATION = "<Image>/FAnim/FAnim Timeline"
 
@@ -82,7 +82,6 @@ class Utils:
         """
         if not Utils.is_frame_fixed(layer): return
         layer.name = layer.name[:-4]
-
 
     @staticmethod
     def is_frame_fixed(layer):
@@ -326,18 +325,16 @@ class AnimFrame(gtk.EventBox):
         self.thumbnail = gtk.Image()
         self.label = gtk.Label(self.layer.name)
         # creating the fix button, to anchor background frames.
-        self._fix_button = Utils.toggle_button_stock(gtk.STOCK_MEDIA_RECORD,20)
+        icon_size = gtk.ICON_SIZE_MENU
+        self._fix_button = Utils.toggle_button_stock(gtk.STOCK_NO, icon_size)
         self._fix_button.set_tooltip_text("toggle fixed visibility.")
 
         # update fixed variable
         self.fixed = Utils.is_frame_fixed(self.layer)
         #images
-        pin_img = gtk.Image()
-        pin_img.set_from_stock(gtk.STOCK_YES,20)
-        pin_img2 = gtk.Image()
-        pin_img2.set_from_stock(gtk.STOCK_MEDIA_RECORD,20)
-
-        self._fix_button_images = [pin_img,pin_img2]
+        self._fix_button_images = [gtk.Image(), gtk.Image()]
+        self._fix_button_images[0].set_from_stock(gtk.STOCK_YES, icon_size)
+        self._fix_button_images[1].set_from_stock(gtk.STOCK_NO, icon_size)
 
         ## connect
         self._fix_button.connect('clicked',self.on_toggle_fix)
@@ -358,8 +355,8 @@ class AnimFrame(gtk.EventBox):
         frame.add(layout)
 
         layout.pack_start(self.label)
-        layout.pack_start(self._fix_button)
         layout.pack_start(self.thumbnail)
+        layout.pack_start(self._fix_button)
         self._get_thumb_image()
 
     def _get_thumb_image(self):
@@ -549,11 +546,7 @@ class Timeline(gtk.Window):
             self.frame_bar.pack_start(f,False,True,2)
             self.frames.append(f)
             f.show_all()
-
         self.undo(True)
-        #if len(self.frames) > 0:
-        #    self.active = 0
-        #    self.on_goto(None,START)
 
     def _setup_playbackbar(self):
         playback_bar = gtk.HBox()
@@ -561,17 +554,14 @@ class Timeline(gtk.Window):
         stock_size = gtk.ICON_SIZE_BUTTON
 
         # play button
-        ## image
-        image_play = gtk.Image()
-        image_play.set_from_stock(gtk.STOCK_MEDIA_PLAY,stock_size)
-        image_pause = gtk.Image()
-        image_pause.set_from_stock(gtk.STOCK_MEDIA_PAUSE,stock_size)
         ## append the images to a list to be used later on
-        self.play_button_images.append(image_play)
-        self.play_button_images.append(image_pause)
+        self.play_button_images = [gtk.Image(), gtk.Image()]
+        self.play_button_images[0].set_from_stock(gtk.STOCK_MEDIA_PLAY,stock_size)
+        self.play_button_images[1].set_from_stock(gtk.STOCK_MEDIA_PAUSE,stock_size)
+
         ## button
         b_play = gtk.Button()
-        b_play.set_image(image_play)
+        b_play.set_image(self.play_button_images[0])
         b_play.set_size_request(button_size,button_size)
 
         b_tostart = Utils.button_stock(gtk.STOCK_MEDIA_PREVIOUS,stock_size)
@@ -603,15 +593,10 @@ class Timeline(gtk.Window):
         b_next.set_tooltip_text("To the next frame")
         b_tostart.set_tooltip_text("To the start frame")
         b_toend.set_tooltip_text("To the end frame")
-        
-        # packing everything in gbar
-        playback_bar.pack_start(b_tostart,False,False,0)
-        playback_bar.pack_start(b_prev,False,False,0)
-        playback_bar.pack_start(b_play,False,False,0)
-        playback_bar.pack_start(b_next,False,False,0)
-        playback_bar.pack_start(b_toend,False,False,0)
-        playback_bar.pack_start(b_repeat,False,False,0)
 
+        # packing everything in gbar
+        w = [b_tostart, b_prev, b_play, b_next, b_toend, b_repeat]
+        map(lambda x: playback_bar.pack_start(x,False,False,0), w)
         return playback_bar
 
     def _setup_editbar(self):
@@ -644,7 +629,6 @@ class Timeline(gtk.Window):
 
         # packing everything in gbar
         map(lambda x: edit_bar.pack_start(x,False,False,0),w)
-
         return edit_bar
 
     def _setup_config(self):
@@ -671,7 +655,6 @@ class Timeline(gtk.Window):
 
         # pack into config_bar
         map(lambda x: config_bar.pack_start(x,False,False,0),w)
-
         return config_bar
 
     def _setup_onionskin(self):
@@ -694,7 +677,6 @@ class Timeline(gtk.Window):
 
         # packing everything in gbar
         map(lambda x: onionskin_bar.pack_start(x,False,False,0),w)
-
         return onionskin_bar
 
     def _setup_generalbar(self):
@@ -718,7 +700,6 @@ class Timeline(gtk.Window):
 
         # packing everything in general_bar
         map(lambda x: general_bar.pack_start(x,False,False,0),w)
-
         return general_bar
 
     def get_settings(self):
@@ -761,7 +742,7 @@ class Timeline(gtk.Window):
         Update all timeline thumbnails.
         """
         # I discovered that gimp has a delay to update when the image are closed, putting
-        # a small delay here i make shure that my if will catch the lack of the image
+        # a small delay here i make sure that my if will catch the lack of the image
         # and close fanim correctly.
         time.sleep(0.1)
         if not(self.image in gimp.image_list()):
@@ -774,7 +755,6 @@ class Timeline(gtk.Window):
             else:
                 if self.active >= len(self.image.layers):
                     self.active = len(self.image.layers)-1
-
                 self._scan_image_layers()
                 self.on_goto(None,GIMP_ACTIVE)
 
