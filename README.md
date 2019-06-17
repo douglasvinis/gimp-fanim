@@ -40,6 +40,7 @@ Windows: %HOMEPATH%\.gimp-[version]\plug-ins\
 *gimp-2.10*  
 Linux: ~/.config/GIMP/2.10/plug-ins/  
 Windows: %HOMEPATH%\AppData\Roaming\GIMP\2.10\plug-ins\  
+macOS: /Users/[username]/Library/Application Support/GIMP/2.10/plug-ins (user) or /Applications/GIMP-2.10.app/Contents/Resources/lib/gimp/2.0/plug-ins (global) 
 
 with the files in the correct place you can open GIMP, if everything is alright you
 will see in the menubar the "FAnim" menu.  
